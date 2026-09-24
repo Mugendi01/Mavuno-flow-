@@ -1,0 +1,261 @@
+// Prisma schema for FarmPulse
+// Default local datasource is SQLite for immediate out-of-the-box development & testing.
+// For PostgreSQL production deployment, see prisma/schema.postgresql.prisma or switch provider to "postgresql".
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                  String             @id @default(uuid())
+  email               String             @unique
+  passwordHash        String
+  fullName            String
+  phoneNumber         String?
+  emailVerified       DateTime?
+  memberships         FarmMember[]
+  createdTransactions Transaction[]      @relation("CreatedTransactions")
+  deletedTransactions Transaction[]      @relation("DeletedTransactions")
+  recordedPayments    Payment[]
+  reportPreferences   ReportPreference[]
+  auditLogs           AuditLog[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([email])
+}
+
+model Farm {
+  id                String             @id @default(uuid())
+  name              String
+  slug              String             @unique
+  locationCounty    String
+  country           String             @default("Kenya")
+  currency          String             @default("KES")
+  farmSizeAcres     Float?
+  timezone          String             @default("Africa/Nairobi")
+  members           FarmMember[]
+  enterprises       Enterprise[]
+  categories        Category[]
+  transactions      Transaction[]
+  receivables       Receivable[]
+  weeklyReports     WeeklyReport[]
+  reportPreferences ReportPreference[]
+  receipts          Receipt[]
+  auditLogs         AuditLog[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([slug])
+}
+
+model FarmMember {
+  id       String   @id @default(uuid())
+  farmId   String
+  farm     Farm     @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role     String   @default("OWNER") // OWNER | MANAGER | FARM_HAND
+  joinedAt DateTime @default(now())
+
+  @@unique([farmId, userId])
+  @@index([userId])
+  @@index([farmId])
+}
+
+model EnterpriseType {
+  id          String       @id @default(uuid())
+  name        String
+  code        String       @unique // POULTRY | AQUACULTURE | PIGGERY | GOATS_SHEEP | CATTLE | CROPS
+  icon        String
+  enterprises Enterprise[]
+  categories  Category[]
+}
+
+model Enterprise {
+  id               String         @id @default(uuid())
+  farmId           String
+  farm             Farm           @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  enterpriseTypeId String
+  enterpriseType   EnterpriseType @relation(fields: [enterpriseTypeId], references: [id])
+  name             String
+  status           String         @default("ACTIVE") // ACTIVE | INACTIVE | ARCHIVED
+  transactions     Transaction[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([farmId])
+  @@index([enterpriseTypeId])
+}
+
+model Category {
+  id               String          @id @default(uuid())
+  farmId           String?
+  farm             Farm?           @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  enterpriseTypeId String?
+  enterpriseType   EnterpriseType? @relation(fields: [enterpriseTypeId], references: [id], onDelete: SetNull)
+  name             String
+  type             String // EXPENSE | INCOME
+  isSystem         Boolean         @default(false)
+  transactions     Transaction[]
+  createdAt        DateTime        @default(now())
+
+  @@index([farmId])
+  @@index([type])
+}
+
+model Transaction {
+  id              String      @id @default(uuid())
+  localId         String      @unique // Client UUID idempotency key for offline sync
+  farmId          String
+  farm            Farm        @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  enterpriseId    String
+  enterprise      Enterprise  @relation(fields: [enterpriseId], references: [id])
+  categoryId      String
+  category        Category    @relation(fields: [categoryId], references: [id])
+  createdById     String
+  createdBy       User        @relation("CreatedTransactions", fields: [createdById], references: [id])
+  type            String // EXPENSE | SALE
+  transactionDate DateTime
+  amount          Float
+  quantity        Float?
+  unit            String?
+  unitPrice       Float?
+  paymentMethod   String      @default("CASH") // CASH | MPESA | BANK | CREDIT | OTHER
+  paymentStatus   String      @default("PAID") // PAID | PARTIALLY_PAID | CREDIT
+  salesChannel    String?
+  buyerName       String?
+  notes           String?
+  receiptUrl      String?
+  isDeleted       Boolean     @default(false)
+  deletedAt       DateTime?
+  deletedById     String?
+  deletedBy       User?       @relation("DeletedTransactions", fields: [deletedById], references: [id])
+  receivable      Receivable?
+  receipt         Receipt?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([farmId, transactionDate])
+  @@index([farmId, enterpriseId])
+  @@index([farmId, type])
+  @@index([localId])
+}
+
+model Receivable {
+  id            String    @id @default(uuid())
+  farmId        String
+  farm          Farm      @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  transactionId String    @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  customerName  String
+  customerPhone String?
+  totalAmount   Float
+  paidAmount    Float     @default(0)
+  balanceAmount Float
+  dueDate       DateTime?
+  status        String    @default("PENDING") // PENDING | PARTIALLY_PAID | PAID | OVERDUE
+  payments      Payment[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([farmId, status])
+}
+
+model Payment {
+  id            String     @id @default(uuid())
+  receivableId  String
+  receivable    Receivable @relation(fields: [receivableId], references: [id], onDelete: Cascade)
+  amount        Float
+  paymentDate   DateTime   @default(now())
+  paymentMethod String     @default("MPESA") // CASH | MPESA | BANK | OTHER
+  referenceCode String?    // e.g. M-Pesa transaction code
+  recordedById  String
+  recordedBy    User       @relation(fields: [recordedById], references: [id])
+  notes         String?
+  createdAt     DateTime   @default(now())
+
+  @@index([receivableId])
+}
+
+model WeeklyReport {
+  id                     String    @id @default(uuid())
+  farmId                 String
+  farm                   Farm      @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  weekStartDate          DateTime
+  weekEndDate            DateTime
+  totalRevenue           Float
+  totalExpenses          Float
+  netProfit              Float
+  cashReceived           Float
+  cashSpent              Float
+  outstandingReceivables Float
+  reportDataJson         String // JSON serialized breakdown
+  pdfUrl                 String?
+  status                 String    @default("GENERATED") // GENERATED | SENT | FAILED
+  sentAt                 DateTime?
+  createdAt              DateTime  @default(now())
+
+  @@index([farmId, weekStartDate])
+}
+
+model ReportPreference {
+  id           String   @id @default(uuid())
+  farmId       String
+  farm         Farm     @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isEnabled    Boolean  @default(true)
+  dayOfWeek    Int      @default(1) // 1 = Monday
+  timeOfDay    String   @default("07:00")
+  emailAddress String
+  timezone     String   @default("Africa/Nairobi")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([farmId, userId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  farmId     String
+  farm       Farm     @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  entityType String
+  entityId   String
+  action     String // CREATE | UPDATE | DELETE | VOID
+  actorId    String
+  actor      User     @relation(fields: [actorId], references: [id])
+  oldValues  String?  // JSON string
+  newValues  String?  // JSON string
+  ipAddress  String?
+  timestamp  DateTime @default(now())
+
+  @@index([farmId, entityType, entityId])
+}
+
+model Receipt {
+  id                String       @id @default(uuid())
+  transactionId     String       @unique
+  transaction       Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  farmId            String
+  farm              Farm         @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  receiptNumber     String       @unique // e.g. "FP-20260922-000184"
+  verificationToken String       @unique
+  qrPayload         String       // Public verification URL
+  status            String       @default("VALID") // VALID | VOIDED
+  issuedAt          DateTime     @default(now())
+  voidedAt          DateTime?
+  version           Int          @default(1)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([farmId])
+  @@index([receiptNumber])
+  @@index([verificationToken])
+}
+

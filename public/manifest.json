@@ -1,0 +1,24 @@
+{
+  "name": "FarmPulse — Farm Management",
+  "short_name": "FarmPulse",
+  "description": "Production-ready agricultural financial management platform and PWA",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#F8F9FA",
+  "theme_color": "#1B4332",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
