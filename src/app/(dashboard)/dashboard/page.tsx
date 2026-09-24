@@ -5,6 +5,8 @@ import { StatCard } from "@/components/dashboard/StatCard";
 import { FinancialCharts } from "@/components/dashboard/FinancialCharts";
 import { EnterpriseMatrix } from "@/components/dashboard/EnterpriseMatrix";
 import { RecentTransactions } from "@/components/dashboard/RecentTransactions";
+import prisma from "@/lib/prisma";
+import { FinancialSummaryKPI, EnterprisePerformanceMetric } from "@/lib/types";
 import {
   TrendingUp,
   TrendingDown,
@@ -12,24 +14,82 @@ import {
   Users2,
   Wallet,
   Calendar,
+  AlertTriangle,
 } from "lucide-react";
 
 export const revalidate = 0; // Fresh SSR data
 
 export default async function DashboardPage() {
-  const farmId = "baraka-agri-ventures"; // Using Baraka Agri-Ventures demo farm
+  let farmId = "baraka-agri-ventures"; // Using Baraka Agri-Ventures demo farm
 
-  // Fetch real aggregated data using server domain services
-  const [kpi, enterpriseMetrics, txData] = await Promise.all([
-    AnalyticsService.getFinancialKPIs(farmId),
-    AnalyticsService.getEnterprisePerformance(farmId),
-    TransactionService.getTransactions({ farmId, limit: 6 }),
-  ]);
+  let kpi: FinancialSummaryKPI = {
+    totalRevenue: 0,
+    totalExpenses: 0,
+    netProfit: 0,
+    cashReceived: 0,
+    cashSpent: 0,
+    outstandingReceivables: 0,
+    overdueReceivables: 0,
+    dateRange: { start: new Date().toISOString(), end: new Date().toISOString() },
+    comparison: {
+      prevRevenue: 0,
+      prevExpenses: 0,
+      prevNetProfit: 0,
+      revenueChangePercent: 0,
+      expensesChangePercent: 0,
+      netProfitChangePercent: 0,
+    },
+  };
+  let enterpriseMetrics: EnterprisePerformanceMetric[] = [];
+  let txData = { transactions: [] as any[], total: 0 };
+  let dbErrorNotice: string | null = null;
+
+  try {
+    // Resolve farm by slug or id
+    const farm = await prisma.farm.findFirst({
+      where: {
+        OR: [{ slug: farmId }, { id: farmId }],
+      },
+    });
+    if (farm) {
+      farmId = farm.id;
+    }
+
+    // Fetch real aggregated data using server domain services
+    [kpi, enterpriseMetrics, txData] = await Promise.all([
+      AnalyticsService.getFinancialKPIs(farmId),
+      AnalyticsService.getEnterprisePerformance(farmId),
+      TransactionService.getTransactions({ farmId, limit: 6 }),
+    ]);
+  } catch (error: any) {
+    console.error("Dashboard server-side data fetch error:", error);
+    dbErrorNotice =
+      error?.message ||
+      "Could not connect to the database. Ensure DATABASE_URL is configured and tables are migrated.";
+  }
 
   const currency = "KES";
 
   return (
     <div className="space-y-6">
+      {/* Database Error / Setup Banner if connection failed */}
+      {dbErrorNotice && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 flex items-start gap-3 shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <p className="font-bold text-amber-950">
+              Database Connection Notice
+            </p>
+            <p className="text-amber-800 leading-relaxed font-mono text-[11px]">
+              {dbErrorNotice}
+            </p>
+            <p className="text-amber-700 text-[11px] pt-1">
+              On Vercel, ensure a persistent PostgreSQL database is linked, <code>DATABASE_URL</code> is added in Vercel Project Settings, and <code>npx prisma db push</code> has been executed.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Welcome & Context Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-farm-surface p-4 sm:p-5 rounded-2xl border border-farm-border shadow-xs">
         <div>

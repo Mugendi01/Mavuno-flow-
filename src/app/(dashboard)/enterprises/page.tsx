@@ -1,16 +1,45 @@
 import React from "react";
 import { AnalyticsService } from "@/lib/services/analyticsService";
-import { Layers, ArrowUpRight, ArrowDownRight, PieChart, Sparkles } from "lucide-react";
+import prisma from "@/lib/prisma";
+import { Layers, ArrowUpRight, ArrowDownRight, PieChart, Sparkles, AlertTriangle } from "lucide-react";
 
 export const revalidate = 0;
 
 export default async function EnterprisesPage() {
-  const farmId = "baraka-agri-ventures";
-  const enterprises = await AnalyticsService.getEnterprisePerformance(farmId);
+  let farmId = "baraka-agri-ventures";
+  let enterprises: any[] = [];
+  let dbErrorNotice: string | null = null;
+
+  try {
+    const farm = await prisma.farm.findFirst({
+      where: {
+        OR: [{ slug: farmId }, { id: farmId }],
+      },
+    });
+    if (farm) {
+      farmId = farm.id;
+    }
+    enterprises = await AnalyticsService.getEnterprisePerformance(farmId);
+  } catch (error: any) {
+    console.error("EnterprisesPage data fetch error:", error);
+    dbErrorNotice = error?.message || "Failed to load enterprise data from database.";
+  }
+
   const currency = "KES";
 
   return (
     <div className="space-y-6">
+      {/* Database Notice if error */}
+      {dbErrorNotice && (
+        <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-amber-900 flex items-start gap-3 shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <p className="font-bold text-amber-950">Database Connection Notice</p>
+            <p className="text-amber-800 font-mono text-[11px]">{dbErrorNotice}</p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-farm-surface p-4 sm:p-5 rounded-2xl border border-farm-border shadow-xs">
         <h1 className="text-xl sm:text-2xl font-black text-farm-primary tracking-tight">
@@ -20,6 +49,12 @@ export default async function EnterprisesPage() {
           Detailed unit-economics, feed expenses, and profit margins for each agricultural unit.
         </p>
       </div>
+
+      {enterprises.length === 0 && !dbErrorNotice && (
+        <div className="bg-farm-surface border border-farm-border rounded-2xl p-8 text-center text-xs text-farm-muted">
+          No enterprises found. Set up your farm enterprises in onboarding or settings.
+        </div>
+      )}
 
       {/* Enterprise Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -118,7 +153,7 @@ export default async function EnterprisesPage() {
                     <p className="text-xs text-farm-muted">No expenses recorded for this period.</p>
                   ) : (
                     <div className="space-y-1.5">
-                      {e.costBreakdown.map((item) => (
+                      {e.costBreakdown.map((item: any) => (
                         <div key={item.category} className="space-y-0.5">
                           <div className="flex justify-between text-xs">
                             <span className="text-farm-charcoal font-medium">{item.category}</span>

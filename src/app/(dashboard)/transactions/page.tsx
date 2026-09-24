@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import prisma from "@/lib/prisma";
+
 export const revalidate = 0;
 
 export default async function TransactionsPage({
@@ -22,18 +24,35 @@ export default async function TransactionsPage({
 }: {
   searchParams: { [key: string]: string | undefined };
 }) {
-  const farmId = "baraka-agri-ventures";
+  let farmId = "baraka-agri-ventures";
   const typeFilter = searchParams.type as any;
   const enterpriseId = searchParams.enterpriseId;
   const search = searchParams.search;
 
-  const data = await TransactionService.getTransactions({
-    farmId,
-    type: typeFilter,
-    enterpriseId,
-    search,
-    limit: 100,
-  });
+  let data = { transactions: [] as any[], total: 0 };
+  let dbErrorNotice: string | null = null;
+
+  try {
+    const farm = await prisma.farm.findFirst({
+      where: {
+        OR: [{ slug: farmId }, { id: farmId }],
+      },
+    });
+    if (farm) {
+      farmId = farm.id;
+    }
+
+    data = await TransactionService.getTransactions({
+      farmId,
+      type: typeFilter,
+      enterpriseId,
+      search,
+      limit: 100,
+    });
+  } catch (error: any) {
+    console.error("TransactionsPage data fetch error:", error);
+    dbErrorNotice = error?.message || "Failed to load transactions from database.";
+  }
 
   const currency = "KES";
 
