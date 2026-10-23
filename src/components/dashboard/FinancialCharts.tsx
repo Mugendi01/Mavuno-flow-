@@ -14,9 +14,10 @@ import {
 
 interface FinancialChartsProps {
   currency?: string;
+  periodLabel?: string;
 }
 
-export function FinancialCharts({ currency = "KES" }: FinancialChartsProps) {
+export function FinancialCharts({ currency = "KES", periodLabel }: FinancialChartsProps) {
   const [isMounted, setIsMounted] = useState(false);
 
   useEffect(() => {
@@ -52,7 +53,7 @@ export function FinancialCharts({ currency = "KES" }: FinancialChartsProps) {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div>
           <h3 className="text-sm sm:text-base font-bold text-farm-primary">
-            Revenue vs. Expenses (Last 7 Days)
+            Revenue vs. Expenses {periodLabel ? `(${periodLabel})` : "(Current Period)"}
           </h3>
           <p className="text-xs text-farm-muted">Comparison in {currency}</p>
         </div>

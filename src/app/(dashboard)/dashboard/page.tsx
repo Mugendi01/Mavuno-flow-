@@ -9,6 +9,8 @@ import { EnterpriseMatrix } from "@/components/dashboard/EnterpriseMatrix";
 import { RecentTransactions } from "@/components/dashboard/RecentTransactions";
 import prisma from "@/lib/prisma";
 import { FinancialSummaryKPI, EnterprisePerformanceMetric } from "@/lib/types";
+import { startOfWeek, startOfMonth, subDays, format } from "date-fns";
+import { DashboardPeriodToggle } from "@/components/dashboard/DashboardPeriodToggle";
 import {
   TrendingUp,
   TrendingDown,
@@ -29,10 +31,41 @@ import {
 
 export const revalidate = 0; // Fresh SSR data
 
-export default async function DashboardPage() {
+interface DashboardPageProps {
+  searchParams?: { period?: string };
+}
+
+export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   let authContext: any = null;
   let farm: any = null;
   let user: any = null;
+
+  const periodParam = (searchParams?.period as string) || "month";
+  const activePeriod: "week" | "month" | "season" =
+    periodParam === "week" || periodParam === "season" ? periodParam : "month";
+
+  const now = new Date();
+  let dateFrom: Date;
+  let dateTo: Date = now;
+  let periodLabel = "";
+  let comparisonLabel = "";
+
+  if (activePeriod === "week") {
+    dateFrom = startOfWeek(now, { weekStartsOn: 1 });
+    periodLabel = `This Week (${format(dateFrom, "MMM d")} – ${format(now, "MMM d")})`;
+    comparisonLabel = "vs last week";
+  } else if (activePeriod === "season") {
+    dateFrom = subDays(now, 90);
+    periodLabel = `This Season (Last 90 Days)`;
+    comparisonLabel = "vs last season";
+  } else {
+    dateFrom = startOfMonth(now);
+    periodLabel = `This Month (${format(dateFrom, "MMMM yyyy")})`;
+    comparisonLabel = "vs last month";
+  }
+
+  const dateFromStr = dateFrom.toISOString();
+  const dateToStr = dateTo.toISOString();
 
   let kpi: FinancialSummaryKPI = {
     totalRevenue: 0,
@@ -42,7 +75,7 @@ export default async function DashboardPage() {
     cashSpent: 0,
     outstandingReceivables: 0,
     overdueReceivables: 0,
-    dateRange: { start: new Date().toISOString(), end: new Date().toISOString() },
+    dateRange: { start: dateFromStr, end: dateToStr },
     comparison: {
       prevRevenue: 0,
       prevExpenses: 0,
@@ -55,6 +88,7 @@ export default async function DashboardPage() {
   let enterpriseMetrics: EnterprisePerformanceMetric[] = [];
   let txData = { transactions: [] as any[], total: 0 };
   let activeEnterprises: any[] = [];
+  let hasTransactions = false;
   let dbErrorNotice: string | null = null;
 
   try {
@@ -71,11 +105,22 @@ export default async function DashboardPage() {
       include: { enterpriseType: true },
     });
 
-    // 3. Fetch real aggregated data using server domain services
+    // 3. Check all-time transactions for empty-state evaluation
+    const allTimeTxCount = await prisma.transaction.count({
+      where: { farmId, isDeleted: false },
+    });
+    hasTransactions = allTimeTxCount > 0;
+
+    // 4. Fetch period-filtered aggregated data using server domain services
     [kpi, enterpriseMetrics, txData] = await Promise.all([
-      AnalyticsService.getFinancialKPIs(farmId),
-      AnalyticsService.getEnterprisePerformance(farmId),
-      TransactionService.getTransactions({ farmId, limit: 6 }),
+      AnalyticsService.getFinancialKPIs(farmId, dateFromStr, dateToStr),
+      AnalyticsService.getEnterprisePerformance(farmId, dateFromStr, dateToStr),
+      TransactionService.getTransactions({
+        farmId,
+        dateFrom: dateFromStr.slice(0, 10),
+        dateTo: dateToStr.slice(0, 10),
+        limit: 6,
+      }),
     ]);
   } catch (error: any) {
     console.error("Dashboard server-side data fetch error:", error);
@@ -86,7 +131,6 @@ export default async function DashboardPage() {
 
   const currency = farm?.currency || "KES";
   const firstName = user?.fullName ? user.fullName.split(" ")[0] : "Farmer";
-  const hasTransactions = txData.total > 0;
 
   return (
     <div className="space-y-6">
@@ -112,26 +156,24 @@ export default async function DashboardPage() {
               {farm?.name || "Your Farm"}
             </span>
           </div>
-          <p className="text-xs sm:text-sm text-farm-muted mt-0.5">
-            {hasTransactions
-              ? "Real-time revenue, spending, enterprise margins & cash collections."
-              : `Your farm profile in ${farm?.locationCounty || "Kenya"} is ready. Let's record your first activity.`}
-          </p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <p className="text-xs sm:text-sm text-farm-muted">
+              {hasTransactions
+                ? "Real-time revenue, spending, enterprise margins & cash collections."
+                : `Your farm profile in ${farm?.locationCounty || "Kenya"} is ready. Let's record your first activity.`}
+            </p>
+            {hasTransactions && (
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-farm-bg border border-farm-border text-farm-slate flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-farm-primary" />
+                <span>{periodLabel}</span>
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Date Filter selector if transactions exist */}
         {hasTransactions ? (
-          <div className="flex items-center gap-1.5 bg-farm-bg p-1 rounded-xl border border-farm-border text-xs font-semibold self-start sm:self-auto">
-            <button className="px-3 py-1.5 bg-farm-primary text-white rounded-lg shadow-xs">
-              This Month
-            </button>
-            <button className="px-3 py-1.5 text-farm-slate hover:text-farm-primary rounded-lg">
-              This Week
-            </button>
-            <button className="px-3 py-1.5 text-farm-slate hover:text-farm-primary rounded-lg">
-              This Season
-            </button>
-          </div>
+          <DashboardPeriodToggle activePeriod={activePeriod} />
         ) : (
           <div className="flex items-center gap-2">
             <Link
@@ -292,6 +334,7 @@ export default async function DashboardPage() {
               amount={`${currency} ${kpi.totalRevenue.toLocaleString()}`}
               subtext="Money coming into farm"
               changePercent={kpi.comparison?.revenueChangePercent}
+              changeLabel={comparisonLabel}
               icon={TrendingUp}
               variant="positive"
             />
@@ -301,6 +344,7 @@ export default async function DashboardPage() {
               amount={`${currency} ${kpi.totalExpenses.toLocaleString()}`}
               subtext="Cost of feeds, labour & vet"
               changePercent={kpi.comparison?.expensesChangePercent}
+              changeLabel={comparisonLabel}
               icon={TrendingDown}
               variant="negative"
             />
@@ -310,6 +354,7 @@ export default async function DashboardPage() {
               amount={`${kpi.netProfit >= 0 ? "+" : ""}${currency} ${kpi.netProfit.toLocaleString()}`}
               subtext={kpi.netProfit >= 0 ? "Operating surplus" : "Operating deficit"}
               changePercent={kpi.comparison?.netProfitChangePercent}
+              changeLabel={comparisonLabel}
               icon={Scale}
               variant={kpi.netProfit >= 0 ? "positive" : "negative"}
             />
@@ -410,7 +455,7 @@ export default async function DashboardPage() {
 
           {/* Charts & Enterprise Profitability Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <FinancialCharts currency={currency} />
+            <FinancialCharts currency={currency} periodLabel={periodLabel} />
             <EnterpriseMatrix enterprises={enterpriseMetrics} currency={currency} />
           </div>
 

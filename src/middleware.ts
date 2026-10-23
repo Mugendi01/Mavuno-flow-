@@ -9,6 +9,9 @@ const PROTECTED_ROUTES = [
   "/enterprises",
   "/reports",
   "/settings",
+  "/feed",
+  "/production",
+  "/livestock",
 ];
 
 function parseSession(cookieValue: string | undefined) {
