@@ -1,29 +1,112 @@
 "use client";
 
-import React, { useState } from "react";
-import { Settings, Users, Bell, Shield, CheckCircle2, Save } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Settings, Users, Bell, Shield, CheckCircle2, Save, AlertCircle, Loader2 } from "lucide-react";
 
 export default function SettingsPage() {
-  const [farmName, setFarmName] = useState("Baraka Agri-Ventures");
-  const [locationCounty, setLocationCounty] = useState("Nakuru County");
+  const router = useRouter();
+  const [farmName, setFarmName] = useState("");
+  const [locationCounty, setLocationCounty] = useState("");
   const [currency, setCurrency] = useState("KES");
-  const [farmSize, setFarmSize] = useState("12.5");
-  const [reportEmail, setReportEmail] = useState("farmer@farmpulse.co.ke");
-  const [reportDay, setReportDay] = useState("1"); // Monday
+  const [farmSize, setFarmSize] = useState("");
+  const [reportEmail, setReportEmail] = useState("");
+  const [reportDay, setReportDay] = useState("1"); // 1=Monday
   const [reportTime, setReportTime] = useState("07:00");
-  const [savedNotice, setSavedNotice] = useState(false);
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
 
-  const teamMembers = [
-    { name: "John Kiprop", email: "farmer@farmpulse.co.ke", role: "OWNER", status: "Active" },
-    { name: "Samuel Mwangi", email: "samuel.mgr@farmpulse.co.ke", role: "MANAGER", status: "Active" },
-    { name: "Peter Otieno", email: "peter.hand@farmpulse.co.ke", role: "FARM_HAND", status: "Active" },
-  ];
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleSave = (e: React.FormEvent) => {
+  // Load authoritative settings from database
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+        const res = await fetch("/api/settings");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.farm) {
+            setFarmName(data.farm.name || "");
+            setLocationCounty(data.farm.locationCounty || "");
+            setCurrency(data.farm.currency || "KES");
+            setFarmSize(data.farm.farmSizeAcres ? data.farm.farmSizeAcres.toString() : "");
+          }
+          if (data.preferences) {
+            setReportEmail(data.preferences.reportEmail || "");
+            setReportDay(data.preferences.reportDay ? data.preferences.reportDay.toString() : "1");
+            setReportTime(data.preferences.reportTime || "07:00");
+            setEmailEnabled(data.preferences.emailEnabled ?? true);
+          }
+          if (data.teamMembers) {
+            setTeamMembers(data.teamMembers);
+          }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          setErrorMessage(errData.error || "Failed to load farm settings from database.");
+        }
+      } catch (err: any) {
+        console.error("Settings load error:", err);
+        setErrorMessage("Network error while connecting to farm settings.");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSavedNotice(true);
-    setTimeout(() => setSavedNotice(false), 3000);
+    setSavedNotice(null);
+    setErrorMessage(null);
+    setIsSaving(true);
+
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          farmName,
+          locationCounty,
+          currency,
+          farmSizeAcres: farmSize ? parseFloat(farmSize) : null,
+          reportEmail,
+          reportDay: parseInt(reportDay, 10),
+          reportTime,
+          emailEnabled,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok && data.success) {
+        setSavedNotice("Farm profile and settings saved successfully to database!");
+        // Refresh server components across the application
+        router.refresh();
+        setTimeout(() => setSavedNotice(null), 4000);
+      } else {
+        setErrorMessage(data.error || "Server rejected settings update.");
+      }
+    } catch (err: any) {
+      console.error("Save settings error:", err);
+      setErrorMessage(err.message || "Failed to persist settings to database.");
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="py-20 flex flex-col items-center justify-center text-farm-muted gap-2">
+        <Loader2 className="w-6 h-6 animate-spin text-farm-primary" />
+        <span className="text-xs font-semibold">Loading farm settings from database...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -37,9 +120,16 @@ export default function SettingsPage() {
       </div>
 
       {savedNotice && (
-        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-          <span>Farm preferences updated successfully!</span>
+        <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{savedNotice}</span>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="p-3 bg-red-50 border border-red-300 text-red-800 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+          <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+          <span>{errorMessage}</span>
         </div>
       )}
 
@@ -58,7 +148,7 @@ export default function SettingsPage() {
                 type="text"
                 value={farmName}
                 onChange={(e) => setFarmName(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal"
+                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal focus:ring-2 focus:ring-farm-accent focus:outline-hidden"
                 required
               />
             </div>
@@ -71,7 +161,7 @@ export default function SettingsPage() {
                 type="text"
                 value={locationCounty}
                 onChange={(e) => setLocationCounty(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal"
+                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal focus:ring-2 focus:ring-farm-accent focus:outline-hidden"
                 required
               />
             </div>
@@ -83,7 +173,7 @@ export default function SettingsPage() {
               <select
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal"
+                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal focus:ring-2 focus:ring-farm-accent focus:outline-hidden"
               >
                 <option value="KES">KES — Kenyan Shilling (KSh)</option>
                 <option value="UGX">UGX — Ugandan Shilling</option>
@@ -98,10 +188,10 @@ export default function SettingsPage() {
               </label>
               <input
                 type="number"
-                step="any"
+                step="0.1"
                 value={farmSize}
                 onChange={(e) => setFarmSize(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal"
+                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal focus:ring-2 focus:ring-farm-accent focus:outline-hidden"
               />
             </div>
           </div>
@@ -111,7 +201,9 @@ export default function SettingsPage() {
         <div className="bg-farm-surface border border-farm-border rounded-2xl p-5 shadow-xs space-y-4">
           <div className="flex items-center gap-2 border-b border-farm-border pb-3">
             <Bell className="w-5 h-5 text-farm-primary" />
-            <h2 className="text-sm font-bold text-farm-primary">Weekly Digest Notifications</h2>
+            <h2 className="text-sm font-bold text-farm-primary">
+              Automated Weekly Farm Digest Schedule
+            </h2>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -120,11 +212,11 @@ export default function SettingsPage() {
               <select
                 value={reportDay}
                 onChange={(e) => setReportDay(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal"
+                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal focus:ring-2 focus:ring-farm-accent focus:outline-hidden"
               >
                 <option value="1">Every Monday (Recommended)</option>
                 <option value="5">Every Friday</option>
-                <option value="0">Every Sunday</option>
+                <option value="7">Every Sunday</option>
               </select>
             </div>
 
@@ -136,7 +228,7 @@ export default function SettingsPage() {
                 type="time"
                 value={reportTime}
                 onChange={(e) => setReportTime(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal"
+                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal focus:ring-2 focus:ring-farm-accent focus:outline-hidden"
               />
             </div>
 
@@ -146,7 +238,7 @@ export default function SettingsPage() {
                 type="email"
                 value={reportEmail}
                 onChange={(e) => setReportEmail(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal"
+                className="w-full px-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal focus:ring-2 focus:ring-farm-accent focus:outline-hidden"
                 required
               />
             </div>
@@ -162,17 +254,11 @@ export default function SettingsPage() {
                 Team Access & Role-Based Control (RBAC)
               </h2>
             </div>
-            <button
-              type="button"
-              className="text-xs font-bold text-farm-secondary hover:underline"
-            >
-              + Invite Member
-            </button>
           </div>
 
           <div className="divide-y divide-farm-border text-xs">
             {teamMembers.map((m) => (
-              <div key={m.email} className="py-2.5 flex items-center justify-between">
+              <div key={m.id || m.email} className="py-2.5 flex items-center justify-between">
                 <div>
                   <p className="font-bold text-farm-charcoal">{m.name}</p>
                   <p className="text-farm-muted">{m.email}</p>
@@ -199,10 +285,11 @@ export default function SettingsPage() {
         <div className="flex justify-end">
           <button
             type="submit"
-            className="flex items-center gap-2 px-6 py-2.5 bg-farm-primary hover:bg-farm-secondary text-white rounded-xl text-xs font-bold transition-colors shadow-xs"
+            disabled={isSaving}
+            className="flex items-center gap-2 px-6 py-2.5 bg-farm-primary hover:bg-farm-secondary text-white rounded-xl text-xs font-bold transition-colors shadow-xs disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
-            <span>Save Settings</span>
+            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            <span>{isSaving ? "Saving to Database..." : "Save Settings"}</span>
           </button>
         </div>
       </form>

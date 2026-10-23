@@ -11,7 +11,10 @@ export class ReceiptService {
    * Format: FP-YYYYMMDD-XXXXXX (e.g. FP-20260922-000184)
    * Guaranteed unique at the database level.
    */
-  static async generateReceiptNumber(txDate: Date = new Date()): Promise<string> {
+  static async generateReceiptNumber(
+    txDate: Date = new Date(),
+    dbClient: any = prisma
+  ): Promise<string> {
     const datePrefix = `FP-${format(txDate, "yyyyMMdd")}`;
 
     for (let attempt = 0; attempt < 10; attempt++) {
@@ -19,7 +22,7 @@ export class ReceiptService {
       const randomSuffix = crypto.randomBytes(3).toString("hex").toUpperCase();
       const candidate = `${datePrefix}-${randomSuffix}`;
 
-      const existing = await prisma.receipt.findUnique({
+      const existing = await dbClient.receipt.findUnique({
         where: { receiptNumber: candidate },
       });
 
@@ -39,10 +42,11 @@ export class ReceiptService {
   static async createReceiptForTransaction(
     transactionId: string,
     farmId: string,
-    baseUrl?: string
+    baseUrl?: string,
+    dbClient: any = prisma
   ): Promise<ReceiptDTO> {
     // 1. Check existing receipt for this transaction
-    const existing = await prisma.receipt.findUnique({
+    const existing = await dbClient.receipt.findUnique({
       where: { transactionId },
       include: {
         farm: true,
@@ -58,7 +62,7 @@ export class ReceiptService {
     }
 
     // 2. Fetch transaction details
-    const tx = await prisma.transaction.findUnique({
+    const tx = await dbClient.transaction.findUnique({
       where: { id: transactionId },
       include: { farm: true },
     });
@@ -68,12 +72,12 @@ export class ReceiptService {
     }
 
     // 3. Generate unique identifiers
-    const receiptNumber = await this.generateReceiptNumber(tx.transactionDate);
+    const receiptNumber = await this.generateReceiptNumber(tx.transactionDate, dbClient);
     const verificationToken = crypto.randomBytes(24).toString("hex");
     const qrPayload = QRCodeService.buildVerificationURL(receiptNumber, baseUrl);
 
     // 4. Create receipt in DB
-    const receipt = await prisma.receipt.create({
+    const receipt = await dbClient.receipt.create({
       data: {
         transactionId: tx.id,
         farmId: tx.farmId,
@@ -93,19 +97,22 @@ export class ReceiptService {
     });
 
     // 5. Audit Log
-    await logAuditAction({
-      farmId: tx.farmId,
-      entityType: "RECEIPT",
-      entityId: receipt.id,
-      action: "CREATE",
-      actorId: tx.createdById,
-      newValues: {
-        receiptNumber,
-        transactionId: tx.id,
-        amount: Number(tx.amount),
-        type: tx.type,
+    await logAuditAction(
+      {
+        farmId: tx.farmId,
+        entityType: "RECEIPT",
+        entityId: receipt.id,
+        action: "CREATE",
+        actorId: tx.createdById,
+        newValues: {
+          receiptNumber,
+          transactionId: tx.id,
+          amount: Number(tx.amount),
+          type: tx.type,
+        },
       },
-    });
+      dbClient
+    );
 
     const qrCodeDataURL = await QRCodeService.generateQRCodeDataURL(qrPayload);
     return this.mapToDTO(receipt, qrCodeDataURL);
@@ -135,7 +142,7 @@ export class ReceiptService {
         isValid: false,
         status: "NOT_FOUND",
         receiptNumber: cleanNumber,
-        verificationMessage: "Receipt not found in FarmPulse registry. Please verify the code or contact the issuing farm.",
+        verificationMessage: "Receipt not found in MavunoFlow registry. Please verify the code or contact the issuing farm.",
       };
     }
 
@@ -163,7 +170,7 @@ export class ReceiptService {
       isValid: true,
       status: "VALID",
       receiptNumber: receipt.receiptNumber,
-      verificationMessage: "Authentic FarmPulse Digital Receipt",
+      verificationMessage: "Authentic MavunoFlow Digital Receipt",
       farmName: receipt.farm.name,
       locationCounty: receipt.farm.locationCounty,
       transactionType: receipt.transaction.type as any,

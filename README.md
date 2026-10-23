@@ -1,9 +1,9 @@
-# FarmPulse 🌾
+# MavunoFlow 🌾
 
 > **Modern, Multi-Tenant Farm Management Web Platform & Progressive Web App (PWA)**  
 > Built for commercial, medium, and smallholder farmers across Kenya and Africa, architected for international scale.
 
-FarmPulse helps farm owners answer four fundamental questions in real time:
+MavunoFlow helps farm owners answer four fundamental questions in real time:
 1. **How much money is coming into my farm?**
 2. **How much money am I spending?**
 3. **Which farm enterprise is making or losing money?**
@@ -97,13 +97,17 @@ c:\THE FARM\
 │   └── icons/                     # Application SVG and PNG icons
 ├── scripts/
 │   ├── seed.mjs                   # Kenyan agricultural database seeder
+│   ├── generate-pwa-icons.mjs     # Standalone PWA icon generator (PNG 192/512)
 │   └── test-runner.mjs            # Automated Unit & Integration test suite
 ├── src/
+│   ├── middleware.ts              # Authentication & onboarding route guard
 │   ├── app/
-│   │   ├── (auth)/login/          # Authentication page
+│   │   ├── (auth)/
+│   │   │   ├── login/             # Dedicated MavunoFlow login page
+│   │   │   └── register/          # Farmer account registration
 │   │   ├── (dashboard)/
 │   │   │   ├── layout.tsx         # Responsive dashboard layout (Navbar, Sidebar, BottomNav)
-│   │   │   ├── dashboard/         # Core Financial Health Dashboard
+│   │   │   ├── dashboard/         # Personalized Dashboard & First-Time Empty State
 │   │   │   ├── transactions/      # Transactions Ledger & Standalone New Entry
 │   │   │   ├── sales/             # Filtered Sales redirect
 │   │   │   ├── expenses/          # Filtered Expenses redirect
@@ -113,9 +117,15 @@ c:\THE FARM\
 │   │   │   └── settings/          # Farm Profile & RBAC Team Settings
 │   │   ├── receipts/[id]/         # Dedicated digital receipt & printable view
 │   │   ├── verify/[receiptNumber]/# Public QR code verification page
-│   │   ├── onboarding/            # 4-step farm setup wizard
+│   │   ├── onboarding/            # 5-stage guided farmer onboarding wizard
 │   │   ├── api/
-│   │   │   ├── transactions/      # Transaction CRUD & soft-delete
+│   │   │   ├── auth/              # Login, register, logout, and me endpoints
+│   │   │   ├── onboarding/        # Multi-enterprise farm provisioning (POST)
+│   │   │   ├── transactions/      # Transaction CRUD, atomic writes & soft-delete
+│   │   │   ├── farm/              # Farm profile persistence (GET/PUT)
+│   │   │   ├── enterprises/       # Enterprise management & status updates (GET/POST/PUT)
+│   │   │   ├── categories/        # Farm and enterprise type category resolution (GET)
+│   │   │   ├── settings/          # Farm profile & report preferences atomic save (GET/PUT)
 │   │   │   ├── receipts/[id]/     # Authenticated receipt details & voiding
 │   │   │   ├── verify/[receiptNumber]/ # Public sanitized verification endpoint
 │   │   │   ├── sync/batch/        # Offline batch sync with idempotency check
@@ -124,7 +134,7 @@ c:\THE FARM\
 │   │   │   └── cron/weekly-digest # Scheduled cron job webhook
 │   │   ├── globals.css            # Tailwind directives & print media stylesheet
 │   │   ├── layout.tsx             # Root layout with PWA meta tags
-│   │   └── page.tsx               # Root redirect to /dashboard
+│   │   └── page.tsx               # Dedicated public agricultural landing page (/)
 │   ├── components/
 │   │   ├── dashboard/             # StatCard, FinancialCharts, EnterpriseMatrix, RecentTx
 │   │   ├── layout/                # Navbar, Sidebar, MobileBottomNav
@@ -173,7 +183,7 @@ npm run seed
 ```
 
 ### 4. Run Automated Test Suite
-Execute the unit and integration tests (21/21 assertions):
+Execute the unit and integration tests (76/76 passing assertions covering Financial Logic, Accounts Receivable, Digital Receipts, QR Verification, Atomic Data Persistence, Session Authentication, and Farmer Onboarding):
 ```bash
 npm test
 ```
@@ -223,7 +233,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### 1. Environment Variables (`.env`)
 ```bash
 DATABASE_URL="postgresql://user:password@host:5432/farmpulse?sslmode=require"
-NEXT_PUBLIC_APP_NAME="FarmPulse"
+NEXT_PUBLIC_APP_NAME="MavunoFlow"
 NEXT_PUBLIC_DEFAULT_CURRENCY="KES"
 NEXT_PUBLIC_DEFAULT_TIMEZONE="Africa/Nairobi"
 CRON_SECRET="your-secure-cron-secret-token"

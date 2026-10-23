@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ReportService } from "@/lib/services/reportService";
+import { AuthContextService } from "@/lib/services/authContext";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const farmId = searchParams.get("farmId");
+    const farmIdParam = searchParams.get("farmId");
     const dateStr = searchParams.get("date");
     const format = searchParams.get("format"); // 'json' | 'html'
 
-    if (!farmId) {
-      return NextResponse.json({ error: "Missing farmId parameter" }, { status: 400 });
-    }
+    const context = await AuthContextService.getActiveContext(farmIdParam);
+    const farmId = context.farm.id;
 
     const targetDate = dateStr ? new Date(dateStr) : new Date();
     const digestData = await ReportService.compileWeeklyDigest(farmId, targetDate);

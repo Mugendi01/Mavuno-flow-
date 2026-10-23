@@ -2,7 +2,7 @@
   "name": "farmpulse",
   "version": "1.0.0",
   "private": true,
-  "description": "FarmPulse — Full-Stack Farm Management Web Platform & PWA",
+  "description": "MavunoFlow — Full-Stack Farm Management Web Platform & PWA",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,7 +11,8 @@
     "test": "node scripts/test-runner.mjs",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && node scripts/generate-pwa-icons.mjs",
+    "icons:generate": "node scripts/generate-pwa-icons.mjs",
     "seed": "node scripts/seed.mjs"
   },
   "dependencies": {

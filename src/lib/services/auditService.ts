@@ -11,9 +11,9 @@ export interface AuditLogParams {
   ipAddress?: string;
 }
 
-export async function logAuditAction(params: AuditLogParams) {
+export async function logAuditAction(params: AuditLogParams, dbClient: any = prisma) {
   try {
-    return await prisma.auditLog.create({
+    return await dbClient.auditLog.create({
       data: {
         farmId: params.farmId,
         entityType: params.entityType,

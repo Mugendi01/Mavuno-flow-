@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                from: "FarmPulse Reports <reports@farmpulse.co.ke>",
+                from: "MavunoFlow Reports <reports@farmpulse.co.ke>",
                 to: [pref.emailAddress],
                 subject: `Weekly Farm Digest: ${pref.farm.name} (Week ${digest.period.weekNumber})`,
                 html,

@@ -1,6 +1,6 @@
 {
-  "name": "FarmPulse — Farm Management",
-  "short_name": "FarmPulse",
+  "name": "MavunoFlow — Farm Management",
+  "short_name": "MavunoFlow",
   "description": "Production-ready agricultural financial management platform and PWA",
   "start_url": "/dashboard",
   "display": "standalone",
@@ -19,6 +19,12 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/farmpulse-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }

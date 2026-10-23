@@ -2,145 +2,313 @@ import { prisma } from "../prisma";
 import { TransactionCreateInput, TransactionDTO } from "../types";
 import { logAuditAction } from "./auditService";
 import { ReceiptService } from "./receiptService";
+import { AuthContextService } from "./authContext";
 import { v4 as uuidv4 } from "uuid";
 
 export class TransactionService {
   /**
-   * Create a new transaction with idempotency and automated receivable provisioning.
+   * Create a new transaction with idempotency, server calculations, and atomic database transaction.
    */
   static async createTransaction(input: TransactionCreateInput): Promise<{
     transaction: TransactionDTO;
     isExisting: boolean;
   }> {
+    // 1. Authoritative Farm & User Resolution
+    const authContext = await AuthContextService.getActiveContext(input.farmId);
+    const farmId = authContext.farm.id;
+    const createdById = input.createdById && input.createdById.length > 20
+      ? input.createdById
+      : authContext.user.id;
+
+    // 2. Server-side validation of calculations: do not blindly trust client amount
+    let finalAmount = Number(input.amount);
+    let qty: number | null = input.quantity ? Number(input.quantity) : null;
+    let unitP: number | null = input.unitPrice ? Number(input.unitPrice) : null;
+
+    if (qty !== null && unitP !== null && qty > 0 && unitP > 0) {
+      finalAmount = Math.round(qty * unitP * 100) / 100;
+    }
+
+    if (isNaN(finalAmount) || finalAmount <= 0) {
+      throw new Error("Transaction amount must be a positive number.");
+    }
+
     const localId = input.localId || uuidv4();
-
-    // 1. Idempotency Check: if this client-generated localId already exists, return it
-    const existing = await prisma.transaction.findUnique({
-      where: { localId },
-      include: {
-        enterprise: true,
-        category: true,
-        createdBy: true,
-        receivable: true,
-        receipt: true,
-      },
-    });
-
-    if (existing) {
-      return {
-        transaction: this.mapToDTO(existing),
-        isExisting: true,
-      };
-    }
-
-    // 2. Validate Enterprise belongs to this farm
-    const enterprise = await prisma.enterprise.findFirst({
-      where: { id: input.enterpriseId, farmId: input.farmId },
-    });
-    if (!enterprise) {
-      throw new Error("Specified enterprise does not exist or does not belong to this farm.");
-    }
-
-    // 3. Normalize amount and calculations
-    const amount = Number(input.amount);
-    if (isNaN(amount) || amount <= 0) {
-      throw new Error("Amount must be a positive number.");
-    }
-
     const txDate = new Date(input.transactionDate);
 
-    // 4. Create Transaction
-    const newTx = await prisma.transaction.create({
-      data: {
-        localId,
-        farmId: input.farmId,
-        enterpriseId: input.enterpriseId,
-        categoryId: input.categoryId,
-        createdById: input.createdById,
-        type: input.type,
-        transactionDate: txDate,
-        amount,
-        quantity: input.quantity ? Number(input.quantity) : null,
-        unit: input.unit || null,
-        unitPrice: input.unitPrice ? Number(input.unitPrice) : null,
-        paymentMethod: input.paymentMethod,
-        paymentStatus: input.paymentStatus,
-        salesChannel: input.salesChannel || null,
-        buyerName: input.buyerName || null,
-        notes: input.notes || null,
-        receiptUrl: input.receiptUrl || null,
-      },
-      include: {
-        enterprise: true,
-        category: true,
-        createdBy: true,
-        receivable: true,
-      },
-    });
-
-    // 5. Automated Accounts Receivable if credit or partially paid sale
-    if (
-      input.type === "SALE" &&
-      (input.paymentStatus === "CREDIT" || input.paymentStatus === "PARTIALLY_PAID")
-    ) {
-      const isPartiallyPaid = input.paymentStatus === "PARTIALLY_PAID";
-      // If partially paid, we default initial collection to whatever was paid or half, else 0
-      const paidAmount = 0; // Recorded payments will adjust this
-      const balanceAmount = amount - paidAmount;
-
-      const dueDate = new Date(txDate);
-      dueDate.setDate(dueDate.getDate() + 14); // Default 14 days credit terms
-
-      await prisma.receivable.create({
-        data: {
-          farmId: input.farmId,
-          transactionId: newTx.id,
-          customerName: input.buyerName || "Unnamed Customer",
-          customerPhone: null,
-          totalAmount: amount,
-          paidAmount,
-          balanceAmount,
-          dueDate,
-          status: isPartiallyPaid ? "PARTIALLY_PAID" : "PENDING",
+    // 3. Execute entirely within an atomic database transaction
+    return await prisma.$transaction(async (tx) => {
+      // Idempotency Check: if this localId already exists, return the authoritative record
+      const existing = await tx.transaction.findUnique({
+        where: { localId },
+        include: {
+          enterprise: true,
+          category: true,
+          createdBy: true,
+          receivable: true,
+          receipt: true,
         },
       });
+
+      if (existing) {
+        return {
+          transaction: TransactionService.mapToDTO(existing),
+          isExisting: true,
+        };
+      }
+
+      // Verify Enterprise belongs to this farm
+      const enterprise = await tx.enterprise.findFirst({
+        where: { id: input.enterpriseId, farmId },
+      });
+      if (!enterprise) {
+        throw new Error(
+          `Specified enterprise does not exist or does not belong to farm '${authContext.farm.name}'.`
+        );
+      }
+
+      // Verify Category exists
+      const category = await tx.category.findUnique({
+        where: { id: input.categoryId },
+      });
+      if (!category) {
+        throw new Error("Specified category does not exist.");
+      }
+
+      // Create Transaction Record
+      const newTx = await tx.transaction.create({
+        data: {
+          localId,
+          farmId,
+          enterpriseId: input.enterpriseId,
+          categoryId: input.categoryId,
+          createdById,
+          type: input.type,
+          transactionDate: txDate,
+          amount: finalAmount,
+          quantity: qty,
+          unit: input.unit || null,
+          unitPrice: unitP,
+          paymentMethod: input.paymentMethod,
+          paymentStatus: input.paymentStatus,
+          salesChannel: input.salesChannel || null,
+          buyerName: input.buyerName || null,
+          notes: input.notes || null,
+          receiptUrl: input.receiptUrl || null,
+        },
+        include: {
+          enterprise: true,
+          category: true,
+          createdBy: true,
+        },
+      });
+
+      // Automated Accounts Receivable if credit or partially paid sale
+      if (
+        input.type === "SALE" &&
+        (input.paymentStatus === "CREDIT" || input.paymentStatus === "PARTIALLY_PAID")
+      ) {
+        const isPartiallyPaid = input.paymentStatus === "PARTIALLY_PAID";
+        const paidAmount = 0;
+        const balanceAmount = finalAmount - paidAmount;
+
+        const dueDate = new Date(txDate);
+        dueDate.setDate(dueDate.getDate() + 14);
+
+        await tx.receivable.create({
+          data: {
+            farmId,
+            transactionId: newTx.id,
+            customerName: input.buyerName || "Unnamed Customer",
+            customerPhone: null,
+            totalAmount: finalAmount,
+            paidAmount,
+            balanceAmount,
+            dueDate,
+            status: isPartiallyPaid ? "PARTIALLY_PAID" : "PENDING",
+          },
+        });
+      }
+
+      // Automated Receipt Generation (atomic with transaction)
+      await ReceiptService.createReceiptForTransaction(newTx.id, farmId, undefined, tx);
+
+      // Audit Log
+      await logAuditAction(
+        {
+          farmId,
+          entityType: "TRANSACTION",
+          entityId: newTx.id,
+          action: "CREATE",
+          actorId: createdById,
+          newValues: {
+            type: input.type,
+            amount: finalAmount,
+            enterpriseId: input.enterpriseId,
+            categoryId: input.categoryId,
+            paymentMethod: input.paymentMethod,
+            paymentStatus: input.paymentStatus,
+          },
+        },
+        tx
+      );
+
+      // Re-fetch full committed transaction with all relations
+      const fullTx = await tx.transaction.findUniqueOrThrow({
+        where: { id: newTx.id },
+        include: {
+          enterprise: true,
+          category: true,
+          createdBy: true,
+          receivable: true,
+          receipt: true,
+        },
+      });
+
+      return {
+        transaction: TransactionService.mapToDTO(fullTx),
+        isExisting: false,
+      };
+    });
+  }
+
+  /**
+   * Update an existing transaction atomically with audit trail.
+   */
+  static async updateTransaction(
+    id: string,
+    farmIdOrSlug: string,
+    actorId: string,
+    input: {
+      enterpriseId?: string;
+      categoryId?: string;
+      type?: "EXPENSE" | "SALE";
+      transactionDate?: string;
+      amount?: number;
+      quantity?: number | null;
+      unit?: string | null;
+      unitPrice?: number | null;
+      paymentMethod?: any;
+      paymentStatus?: any;
+      salesChannel?: string | null;
+      buyerName?: string | null;
+      notes?: string | null;
     }
+  ): Promise<TransactionDTO> {
+    const authContext = await AuthContextService.getActiveContext(farmIdOrSlug);
+    const farmId = authContext.farm.id;
 
-    // 6. Record Audit Log
-    await logAuditAction({
-      farmId: input.farmId,
-      entityType: "TRANSACTION",
-      entityId: newTx.id,
-      action: "CREATE",
-      actorId: input.createdById,
-      newValues: {
-        type: input.type,
-        amount,
-        enterpriseId: input.enterpriseId,
-        categoryId: input.categoryId,
-        paymentMethod: input.paymentMethod,
-      },
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.transaction.findFirst({
+        where: { id, farmId, isDeleted: false },
+        include: { receivable: true, receipt: true },
+      });
+
+      if (!existing) {
+        throw new Error("Transaction not found or has been deleted.");
+      }
+
+      // Validate Enterprise if changed
+      if (input.enterpriseId && input.enterpriseId !== existing.enterpriseId) {
+        const ent = await tx.enterprise.findFirst({
+          where: { id: input.enterpriseId, farmId },
+        });
+        if (!ent) {
+          throw new Error("Specified enterprise does not belong to this farm.");
+        }
+      }
+
+      // Recalculate amount if quantity/unitPrice updated
+      let newAmount = input.amount !== undefined ? Number(input.amount) : Number(existing.amount);
+      const newQty = input.quantity !== undefined ? (input.quantity ? Number(input.quantity) : null) : existing.quantity;
+      const newUnitPrice = input.unitPrice !== undefined ? (input.unitPrice ? Number(input.unitPrice) : null) : existing.unitPrice;
+
+      if (newQty !== null && newUnitPrice !== null && newQty > 0 && newUnitPrice > 0) {
+        newAmount = Math.round(newQty * newUnitPrice * 100) / 100;
+      }
+
+      if (newAmount <= 0) {
+        throw new Error("Transaction amount must be greater than zero.");
+      }
+
+      const updateData: any = {
+        amount: newAmount,
+        quantity: newQty,
+        unit: input.unit !== undefined ? input.unit : existing.unit,
+        unitPrice: newUnitPrice,
+        enterpriseId: input.enterpriseId || existing.enterpriseId,
+        categoryId: input.categoryId || existing.categoryId,
+        type: input.type || existing.type,
+        paymentMethod: input.paymentMethod || existing.paymentMethod,
+        paymentStatus: input.paymentStatus || existing.paymentStatus,
+        salesChannel: input.salesChannel !== undefined ? input.salesChannel : existing.salesChannel,
+        buyerName: input.buyerName !== undefined ? input.buyerName : existing.buyerName,
+        notes: input.notes !== undefined ? input.notes : existing.notes,
+      };
+
+      if (input.transactionDate) {
+        updateData.transactionDate = new Date(input.transactionDate);
+      }
+
+      const updated = await tx.transaction.update({
+        where: { id },
+        data: updateData,
+        include: {
+          enterprise: true,
+          category: true,
+          createdBy: true,
+          receivable: true,
+          receipt: true,
+        },
+      });
+
+      // Update associated receivable if amount or customer changed
+      if (existing.receivable) {
+        const newPaid = Number(existing.receivable.paidAmount);
+        const newBalance = Math.max(0, newAmount - newPaid);
+        const newStatus = newBalance === 0 ? "PAID" : newPaid > 0 ? "PARTIALLY_PAID" : "PENDING";
+
+        await tx.receivable.update({
+          where: { id: existing.receivable.id },
+          data: {
+            totalAmount: newAmount,
+            balanceAmount: newBalance,
+            customerName: input.buyerName || existing.receivable.customerName,
+            status: newStatus,
+          },
+        });
+      }
+
+      // Log Audit
+      await logAuditAction(
+        {
+          farmId,
+          entityType: "TRANSACTION",
+          entityId: id,
+          action: "UPDATE",
+          actorId,
+          oldValues: {
+            amount: existing.amount,
+            quantity: existing.quantity,
+            unitPrice: existing.unitPrice,
+            enterpriseId: existing.enterpriseId,
+            categoryId: existing.categoryId,
+            paymentStatus: existing.paymentStatus,
+          },
+          newValues: {
+            amount: newAmount,
+            quantity: newQty,
+            unitPrice: newUnitPrice,
+            enterpriseId: updateData.enterpriseId,
+            categoryId: updateData.categoryId,
+            paymentStatus: updateData.paymentStatus,
+          },
+        },
+        tx
+      );
+
+      return TransactionService.mapToDTO(updated);
     });
-
-    // 7. Automatically generate unique digital receipt with QR code verification
-    await ReceiptService.createReceiptForTransaction(newTx.id, input.farmId);
-
-    // Re-fetch to include created receivable and receipt
-    const fullTx = await prisma.transaction.findUnique({
-      where: { id: newTx.id },
-      include: {
-        enterprise: true,
-        category: true,
-        createdBy: true,
-        receivable: true,
-        receipt: true,
-      },
-    });
-
-    return {
-      transaction: this.mapToDTO(fullTx!),
-      isExisting: false,
-    };
   }
 
   /**
@@ -158,8 +326,16 @@ export class TransactionService {
     limit?: number;
     offset?: number;
   }): Promise<{ transactions: TransactionDTO[]; total: number }> {
+    // Resolve farmId (supports both slug and UUID)
+    const farm = await prisma.farm.findFirst({
+      where: {
+        OR: [{ id: filters.farmId }, { slug: filters.farmId }],
+      },
+    });
+    const farmId = farm ? farm.id : filters.farmId;
+
     const where: any = {
-      farmId: filters.farmId,
+      farmId,
       isDeleted: false,
     };
 
@@ -218,7 +394,7 @@ export class TransactionService {
     ]);
 
     return {
-      transactions: items.map(this.mapToDTO),
+      transactions: items.map((tx) => this.mapToDTO(tx)),
       total,
     };
   }
@@ -228,53 +404,75 @@ export class TransactionService {
    */
   static async softDeleteTransaction(
     id: string,
-    farmId: string,
+    farmIdOrSlug: string,
     actorId: string
   ): Promise<TransactionDTO> {
-    const existing = await prisma.transaction.findFirst({
-      where: { id, farmId, isDeleted: false },
+    const authContext = await AuthContextService.getActiveContext(farmIdOrSlug);
+    const farmId = authContext.farm.id;
+
+    return await prisma.$transaction(async (tx) => {
+      const existing = await tx.transaction.findFirst({
+        where: { id, farmId, isDeleted: false },
+      });
+
+      if (!existing) {
+        throw new Error("Transaction not found or already deleted.");
+      }
+
+      const updated = await tx.transaction.update({
+        where: { id },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: actorId,
+        },
+        include: {
+          enterprise: true,
+          category: true,
+          createdBy: true,
+          receivable: true,
+          receipt: true,
+        },
+      });
+
+      // Void the digital receipt
+      await tx.receipt.updateMany({
+        where: { transactionId: id },
+        data: {
+          status: "VOIDED",
+          voidedAt: new Date(),
+        },
+      });
+
+      // If associated receivable exists, mark CANCELLED
+      await tx.receivable.updateMany({
+        where: { transactionId: id },
+        data: {
+          status: "CANCELLED",
+        },
+      });
+
+      await logAuditAction(
+        {
+          farmId,
+          entityType: "TRANSACTION",
+          entityId: id,
+          action: "DELETE",
+          actorId,
+          oldValues: existing,
+          newValues: { isDeleted: true, deletedAt: new Date() },
+        },
+        tx
+      );
+
+      return TransactionService.mapToDTO(updated);
     });
-
-    if (!existing) {
-      throw new Error("Transaction not found or already deleted.");
-    }
-
-    const updated = await prisma.transaction.update({
-      where: { id },
-      data: {
-        isDeleted: true,
-        deletedAt: new Date(),
-        deletedById: actorId,
-      },
-      include: {
-        enterprise: true,
-        category: true,
-        createdBy: true,
-        receivable: true,
-        receipt: true,
-      },
-    });
-
-    // Void the digital receipt
-    await ReceiptService.voidReceiptForTransaction(id, actorId, "Transaction soft-deleted");
-
-    await logAuditAction({
-      farmId,
-      entityType: "TRANSACTION",
-      entityId: id,
-      action: "DELETE",
-      actorId,
-      oldValues: existing,
-      newValues: { isDeleted: true, deletedAt: new Date() },
-    });
-
-    return this.mapToDTO(updated);
   }
 
   /**
    * Map raw Prisma Transaction model to clean DTO
    */
-  private static mapToDTO(tx: any): TransactionDTO {
+  public static mapToDTO(tx: any, qrCodeDataURL?: string): TransactionDTO {
     return {
       id: tx.id,
       localId: tx.localId,

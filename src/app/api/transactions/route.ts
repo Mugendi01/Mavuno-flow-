@@ -88,9 +88,15 @@ export async function POST(req: NextRequest) {
       receiptUrl: validated.receiptUrl ?? undefined,
     });
 
-    return NextResponse.json(result, { status: result.isExisting ? 200 : 201 });
+    return NextResponse.json(
+      { success: true, ...result },
+      { status: result.isExisting ? 200 : 201 }
+    );
   } catch (error: any) {
     console.error("POST /api/transactions error:", error);
-    return NextResponse.json({ error: error.message || "Failed to create transaction" }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to create transaction" },
+      { status: 400 }
+    );
   }
 }

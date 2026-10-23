@@ -1,4 +1,4 @@
-// Prisma schema for FarmPulse
+// Prisma schema for MavunoFlow
 // Default local datasource is SQLite for immediate out-of-the-box development & testing.
 // For PostgreSQL production deployment, see prisma/schema.postgresql.prisma or switch provider to "postgresql".
 
@@ -9,6 +9,7 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
+  output   = "../src/generated/client"
 }
 
 model User {
@@ -18,12 +19,17 @@ model User {
   fullName            String
   phoneNumber         String?
   emailVerified       DateTime?
+  onboardingCompleted Boolean            @default(false)
   memberships         FarmMember[]
   createdTransactions Transaction[]      @relation("CreatedTransactions")
   deletedTransactions Transaction[]      @relation("DeletedTransactions")
   recordedPayments    Payment[]
   reportPreferences   ReportPreference[]
   auditLogs           AuditLog[]
+  recordedFeedRecords       FeedRecord[]        @relation("RecordedFeedRecords")
+  recordedProductionRecords ProductionRecord[]  @relation("RecordedProductionRecords")
+  createdFeedPurchases      FeedPurchase[]      @relation("CreatedFeedPurchases")
+  recordedStockMovements    FeedStockMovement[] @relation("RecordedStockMovements")
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
@@ -31,25 +37,38 @@ model User {
 }
 
 model Farm {
-  id                String             @id @default(uuid())
-  name              String
-  slug              String             @unique
-  locationCounty    String
-  country           String             @default("Kenya")
-  currency          String             @default("KES")
-  farmSizeAcres     Float?
-  timezone          String             @default("Africa/Nairobi")
-  members           FarmMember[]
-  enterprises       Enterprise[]
-  categories        Category[]
-  transactions      Transaction[]
-  receivables       Receivable[]
-  weeklyReports     WeeklyReport[]
-  reportPreferences ReportPreference[]
-  receipts          Receipt[]
-  auditLogs         AuditLog[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  id                  String             @id @default(uuid())
+  name                String
+  slug                String             @unique
+  locationCounty      String
+  subCounty           String?
+  townArea            String?
+  country             String             @default("Kenya")
+  currency            String             @default("KES")
+  farmSizeAcres       Float?
+  timezone            String             @default("Africa/Nairobi")
+  primaryEnterpriseId String?
+  recordKeepingMethod String?
+  trackedPriorities   String?
+  scaleOperationsJson String?
+  members             FarmMember[]
+  enterprises         Enterprise[]
+  categories          Category[]
+  transactions        Transaction[]
+  receivables         Receivable[]
+  weeklyReports       WeeklyReport[]
+  reportPreferences   ReportPreference[]
+  receipts            Receipt[]
+  auditLogs           AuditLog[]
+  livestockGroups     LivestockGroup[]
+  feedRecords         FeedRecord[]
+  productionRecords   ProductionRecord[]
+  feedProducts        FeedProduct[]
+  feedPurchases       FeedPurchase[]
+  feedStockMovements  FeedStockMovement[]
+  feedAlerts          FeedAlert[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
 
   @@index([slug])
 }
@@ -86,6 +105,11 @@ model Enterprise {
   name             String
   status           String         @default("ACTIVE") // ACTIVE | INACTIVE | ARCHIVED
   transactions     Transaction[]
+  livestockGroups  LivestockGroup[]
+  feedRecords      FeedRecord[]
+  productionRecords ProductionRecord[]
+  feedProducts     FeedProduct[]
+  feedPurchases    FeedPurchase[]
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
@@ -258,4 +282,214 @@ model Receipt {
   @@index([receiptNumber])
   @@index([verificationToken])
 }
+
+model LivestockGroup {
+  id                String             @id @default(uuid())
+  farmId            String
+  farm              Farm               @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  enterpriseId      String
+  enterprise        Enterprise         @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  name              String             // e.g. "Flock A - Isa Brown Layers", "Pen 2 - Broilers Batch 4", "Milking Herd Alpha"
+  species           String             // POULTRY | DAIRY_CATTLE | BEEF_CATTLE | GOATS | SHEEP | PIGS | RABBITS | OTHER
+  breed             String?            // e.g. "Isa Brown", "Friesian", "Boer", "Landrace"
+  productionStage   String?            // e.g. "Laying", "Brooding", "Lactating", "Dry", "Finishing", "Fattening", "Weaning", "Breeding"
+  initialCount      Int                @default(0)
+  currentCount      Int                @default(0)
+  startDate         DateTime           @default(now())
+  status            String             @default("ACTIVE") // ACTIVE | SOLD | ARCHIVED | COMPLETED
+  notes             String?
+  feedRecords       FeedRecord[]
+  productionRecords ProductionRecord[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([farmId, status])
+  @@index([enterpriseId])
+  @@index([species])
+}
+
+model FeedRecord {
+  id                 String              @id @default(uuid())
+  farmId             String
+  farm               Farm                @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  enterpriseId       String
+  enterprise         Enterprise          @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  livestockGroupId   String?
+  livestockGroup     LivestockGroup?     @relation(fields: [livestockGroupId], references: [id], onDelete: SetNull)
+  feedProductId      String?
+  feedProduct        FeedProduct?        @relation(fields: [feedProductId], references: [id], onDelete: SetNull)
+  recordedById       String
+  recordedBy         User                @relation("RecordedFeedRecords", fields: [recordedById], references: [id])
+  date               DateTime            @default(now())
+  feedType           String              // e.g. "Layers Mash", "Broiler Starter", "Dairy Meal", "Hay / Boma Rhodes"
+  quantityIssued     Float
+  unit               String              // "kg" | "g" | "litres" | "bags" | "bales"
+  bagWeightKg        Float?              // weight per bag in kg if unit is bags
+  quantityIssuedKg   Float               // normalized to kilograms
+  quantityConsumed   Float?              // actual feed consumed if measured
+  quantityConsumedKg Float?              // normalized consumed kg
+  quantityWasted     Float?              // remaining or wasted feed
+  feedCost           Float?              // cost in KES
+  notes              String?
+  stockMovements     FeedStockMovement[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([farmId, date])
+  @@index([enterpriseId])
+  @@index([livestockGroupId])
+  @@index([feedProductId])
+}
+
+model ProductionRecord {
+  id                String          @id @default(uuid())
+  farmId            String
+  farm              Farm            @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  enterpriseId      String
+  enterprise        Enterprise      @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  livestockGroupId  String?
+  livestockGroup    LivestockGroup? @relation(fields: [livestockGroupId], references: [id], onDelete: SetNull)
+  recordedById      String
+  recordedBy        User            @relation("RecordedProductionRecords", fields: [recordedById], references: [id])
+  date              DateTime        @default(now())
+  metric            String          // EGGS | MILK | WEIGHT | BIRTHS | WEANED | MORTALITY | OTHER
+  quantity          Float           // Main measure (eggs, litres, kg live weight, heads)
+  unit              String          // "pieces" | "trays" | "litres" | "kg" | "head"
+  secondaryQuantity Float?          // e.g. damaged eggs, rejected milk, mortality count
+  qualityGrade      String?         // "Grade A", "Large", "Medium", "High Butterfat", etc.
+  quantitySold      Float?
+  quantityFarmUse   Float?
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([farmId, date])
+  @@index([enterpriseId])
+  @@index([livestockGroupId])
+  @@index([metric])
+}
+
+model FeedProduct {
+  id                   String              @id @default(uuid())
+  farmId               String
+  farm                 Farm                @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  enterpriseId         String?
+  enterprise           Enterprise?         @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
+  name                 String              // e.g. "Layers Complete Mash (70kg)"
+  feedType             String              // e.g. "Layers Mash", "Broiler Starter", "Dairy Meal", "Hay / Boma Rhodes"
+  intendedUse          String?             // e.g. "Laying hens 18+ weeks"
+  storageLocation      String?             @default("Main Feed Store")
+  defaultUnit          String              @default("kg")
+  defaultBagWeightKg   Float?              @default(50)
+  currentStockKg       Float               @default(0)
+  unitCost             Float?              @default(0) // Weighted average cost per kg (KES/kg)
+  minReserveKg         Float               @default(100)
+  criticalReserveKg    Float               @default(30)
+  reorderQuantityKg    Float?
+  leadTimeDays         Int?                @default(3)
+  reminderPeriodDays   Int?                @default(2)
+  expectedDailyUsageKg Float?
+  status               String              @default("ACTIVE") // ACTIVE | ARCHIVED
+  purchases            FeedPurchase[]
+  feedRecords          FeedRecord[]
+  stockMovements       FeedStockMovement[]
+  alerts               FeedAlert[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([farmId, status])
+  @@index([farmId, feedType])
+  @@index([enterpriseId])
+}
+
+model FeedPurchase {
+  id                 String              @id @default(uuid())
+  farmId             String
+  farm               Farm                @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  feedProductId      String
+  feedProduct        FeedProduct         @relation(fields: [feedProductId], references: [id], onDelete: Cascade)
+  enterpriseId       String?
+  enterprise         Enterprise?         @relation(fields: [enterpriseId], references: [id], onDelete: SetNull)
+  purchaseDate       DateTime            @default(now())
+  supplierName       String              // e.g. "Unga Farm Care", "Kenchic Agrovet"
+  quantity           Float
+  unit               String              // "bags" | "kg" | "bales" | "tonnes" | "g"
+  bagWeightKg        Float?
+  quantityKg         Float               // Normalized kilograms
+  unitPrice          Float               // Price per unit purchased
+  totalCost          Float               // quantity * unitPrice
+  paymentMethod      String              @default("MPESA") // CASH | MPESA | BANK | CREDIT
+  paymentStatus      String              @default("PAID") // PAID | CREDIT | PARTIALLY_PAID
+  invoiceRef         String?
+  batchNumber        String?
+  expiryDate         DateTime?
+  storageLocation    String?
+  status             String              @default("RECEIVED") // DRAFT | RECEIVED | CANCELLED
+  receivedAt         DateTime?
+  receivedQuantityKg Float?
+  transactionId      String?
+  createdById        String
+  createdBy          User                @relation("CreatedFeedPurchases", fields: [createdById], references: [id])
+  notes              String?
+  stockMovements     FeedStockMovement[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([farmId, purchaseDate])
+  @@index([feedProductId])
+  @@index([status])
+}
+
+model FeedStockMovement {
+  id               String        @id @default(uuid())
+  farmId           String
+  farm             Farm          @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  feedProductId    String
+  feedProduct      FeedProduct   @relation(fields: [feedProductId], references: [id], onDelete: Cascade)
+  movementType     String        // PURCHASE_RECEIPT | FEED_ISSUE | RETURN_TO_STOCK | WASTAGE_LOSS | MANUAL_ADJUSTMENT | PURCHASE_REVERSAL
+  quantityKg       Float         // Positive for additions, negative for deductions
+  previousStockKg  Float
+  resultingStockKg Float
+  feedPurchaseId   String?
+  feedPurchase     FeedPurchase? @relation(fields: [feedPurchaseId], references: [id], onDelete: SetNull)
+  feedRecordId     String?
+  feedRecord       FeedRecord?   @relation(fields: [feedRecordId], references: [id], onDelete: SetNull)
+  unitCost         Float?        // Cost per kg at movement
+  totalValue       Float?
+  storageLocation  String?
+  createdById      String
+  createdBy        User          @relation("RecordedStockMovements", fields: [createdById], references: [id])
+  reason           String?
+  createdAt        DateTime      @default(now())
+
+  @@index([farmId, createdAt])
+  @@index([feedProductId])
+  @@index([movementType])
+  @@index([feedPurchaseId])
+  @@index([feedRecordId])
+}
+
+model FeedAlert {
+  id             String      @id @default(uuid())
+  farmId         String
+  farm           Farm        @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  feedProductId  String
+  feedProduct    FeedProduct @relation(fields: [feedProductId], references: [id], onDelete: Cascade)
+  alertType      String      // LOW_STOCK | CRITICAL_STOCK | OUT_OF_STOCK | REPLENISHMENT_REMINDER
+  severity       String      // INFO | WARNING | CRITICAL
+  message        String
+  currentStockKg Float
+  thresholdKg    Float?
+  daysRemaining  Float?
+  status         String      @default("ACTIVE") // ACTIVE | ACKNOWLEDGED | RESOLVED
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([farmId, status])
+  @@index([feedProductId])
+  @@index([alertType])
+}
+
 

@@ -15,12 +15,12 @@ export default function ReceivablesPage() {
       setLoading(true);
       const url =
         statusFilter === "ALL"
-          ? "/api/receivables?farmId=baraka-agri-ventures"
-          : `/api/receivables?farmId=baraka-agri-ventures&status=${statusFilter}`;
+          ? "/api/receivables"
+          : `/api/receivables?status=${statusFilter}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        setReceivables(data.receivables);
+        setReceivables(data.receivables || []);
       }
     } catch (e) {
       console.error("Failed to load receivables", e);

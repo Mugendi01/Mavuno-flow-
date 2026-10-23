@@ -38,7 +38,7 @@ export function ReceiptCard({ receipt, showBackLink = true }: ReceiptCardProps) 
 
   const handleShare = async () => {
     const shareData = {
-      title: `Receipt ${receipt.receiptNumber} — FarmPulse`,
+      title: `Receipt ${receipt.receiptNumber} — MavunoFlow`,
       text: `${isSale ? "Sales" : "Expense"} Receipt for ${receipt.farmName}: ${currency} ${(
         tx?.amount || 0
       ).toLocaleString()}`,
@@ -133,7 +133,7 @@ export function ReceiptCard({ receipt, showBackLink = true }: ReceiptCardProps) 
             <div className="w-8 h-8 rounded-lg bg-farm-primary flex items-center justify-center text-white">
               <Sprout className="w-4 h-4 text-farm-lime" />
             </div>
-            <span className="font-black text-lg tracking-tight text-farm-primary">FARMPULSE</span>
+            <span className="font-black text-lg tracking-tight text-farm-primary">MAVUNOFLOW</span>
           </div>
 
           <h1 className="text-base font-black text-farm-charcoal mt-1">
@@ -283,7 +283,7 @@ export function ReceiptCard({ receipt, showBackLink = true }: ReceiptCardProps) 
           <div>
             <div className="inline-flex items-center gap-1 text-xs font-bold text-farm-primary">
               <ShieldCheck className="w-4 h-4 text-farm-secondary" />
-              <span>FarmPulse Verified Digital Receipt</span>
+              <span>MavunoFlow Verified Digital Receipt</span>
             </div>
             <p className="text-[11px] text-farm-muted mt-0.5">
               Scan QR code with any camera phone to verify authenticity
@@ -305,7 +305,7 @@ export function ReceiptCard({ receipt, showBackLink = true }: ReceiptCardProps) 
         {/* Footer */}
         <div className="pt-4 border-t border-dashed border-farm-border text-center text-[10px] text-farm-muted space-y-0.5">
           <p className="font-semibold text-farm-slate">Better Records. Better Decisions. Greater Yields.</p>
-          <p>FarmPulse Agriculture Platform • Cryptographically Secured</p>
+          <p>MavunoFlow Agriculture Platform • Cryptographically Secured</p>
         </div>
       </div>
     </div>

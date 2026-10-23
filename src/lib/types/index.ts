@@ -230,3 +230,275 @@ export interface PublicReceiptVerificationDTO {
   unit?: string | null;
 }
 
+// ==========================================
+// LIVESTOCK FEED & PRODUCTION DOMAIN TYPES
+// ==========================================
+
+export type LivestockSpecies =
+  | "POULTRY"
+  | "DAIRY_CATTLE"
+  | "BEEF_CATTLE"
+  | "GOATS"
+  | "SHEEP"
+  | "PIGS"
+  | "RABBITS"
+  | "OTHER";
+
+export type LivestockProductionMetric =
+  | "EGGS"
+  | "MILK"
+  | "WEIGHT"
+  | "BIRTHS"
+  | "WEANED"
+  | "MORTALITY"
+  | "OTHER";
+
+export interface LivestockGroupDTO {
+  id: string;
+  farmId: string;
+  enterpriseId: string;
+  enterpriseName?: string;
+  name: string;
+  species: LivestockSpecies | string;
+  breed?: string | null;
+  productionStage?: string | null;
+  initialCount: number;
+  currentCount: number;
+  startDate: string;
+  status: "ACTIVE" | "SOLD" | "ARCHIVED" | "COMPLETED";
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    feedRecords?: number;
+    productionRecords?: number;
+  };
+}
+
+export interface FeedRecordDTO {
+  id: string;
+  farmId: string;
+  enterpriseId: string;
+  enterpriseName?: string;
+  livestockGroupId?: string | null;
+  livestockGroupName?: string | null;
+  feedProductId?: string | null;
+  feedProductName?: string | null;
+  recordedById: string;
+  recordedByName?: string;
+  date: string;
+  feedType: string;
+  quantityIssued: number;
+  unit: string;
+  bagWeightKg?: number | null;
+  quantityIssuedKg: number;
+  quantityConsumed?: number | null;
+  quantityConsumedKg?: number | null;
+  quantityWasted?: number | null;
+  feedCost?: number | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface ProductionRecordDTO {
+  id: string;
+  farmId: string;
+  enterpriseId: string;
+  enterpriseName?: string;
+  livestockGroupId?: string | null;
+  livestockGroupName?: string | null;
+  recordedById: string;
+  recordedByName?: string;
+  date: string;
+  metric: string;
+  quantity: number;
+  unit: string;
+  secondaryQuantity?: number | null;
+  qualityGrade?: string | null;
+  quantitySold?: number | null;
+  quantityFarmUse?: number | null;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export interface LivestockAnalyticsDTO {
+  period: {
+    dateFrom: string;
+    dateTo: string;
+  };
+  summary: {
+    totalFeedIssuedKg: number;
+    totalFeedConsumedKg: number;
+    hasKnownConsumption: boolean;
+    totalFeedCost: number;
+    totalActiveAnimals: number;
+    primarySpecies: string;
+  };
+  productionSummary: {
+    metric: string;
+    totalQuantity: number;
+    unit: string;
+    secondaryQuantity?: number;
+    averagePerDay: number;
+    averagePerAnimal?: number | null;
+  };
+  productivityIndicators: {
+    // Poultry
+    eggProductionRatePercent?: number | null;
+    feedPerEggGrams?: number | null;
+    feedPerTrayKg?: number | null;
+    isFeedPerEggEstimated?: boolean;
+    eggDamagedRatePercent?: number | null;
+    // Dairy
+    avgMilkYieldPerCowLitres?: number | null;
+    feedPerLitreKg?: number | null;
+    isFeedPerLitreEstimated?: boolean;
+    // Meat & Growing (Broilers, Beef, Pigs, Rabbits, Goats)
+    weightGainKg?: number | null;
+    averageDailyGainKg?: number | null;
+    feedConversionRatio?: number | null;
+    isFcrEstimated?: boolean;
+    // Mortality
+    mortalityCount: number;
+    mortalityRatePercent?: number | null;
+  };
+  feedTimeSeries: Array<{
+    date: string;
+    issuedKg: number;
+    consumedKg: number;
+    cost: number;
+  }>;
+  productionTimeSeries: Array<{
+    date: string;
+    quantity: number;
+    secondaryQuantity: number;
+    unit: string;
+  }>;
+  conversionTimeSeries: Array<{
+    date: string;
+    feedKg: number;
+    productionQty: number;
+    ratio: number | null;
+  }>;
+}
+
+export type FeedStockStatus = "IN_STOCK" | "LOW_STOCK" | "CRITICAL_STOCK" | "OUT_OF_STOCK";
+
+export interface FeedProductDTO {
+  id: string;
+  farmId: string;
+  enterpriseId?: string | null;
+  enterpriseName?: string | null;
+  name: string;
+  feedType: string;
+  intendedUse?: string | null;
+  storageLocation?: string | null;
+  defaultUnit: string;
+  defaultBagWeightKg?: number | null;
+  currentStockKg: number;
+  unitCost?: number | null;
+  minReserveKg: number;
+  criticalReserveKg: number;
+  reorderQuantityKg?: number | null;
+  leadTimeDays?: number | null;
+  reminderPeriodDays?: number | null;
+  expectedDailyUsageKg?: number | null;
+  status: "ACTIVE" | "ARCHIVED";
+  daysRemaining?: number | null;
+  stockStatus: FeedStockStatus;
+  totalPurchasedKg?: number;
+  totalIssuedKg?: number;
+  totalStockValue?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FeedPurchaseDTO {
+  id: string;
+  farmId: string;
+  feedProductId: string;
+  feedProductName: string;
+  enterpriseId?: string | null;
+  enterpriseName?: string | null;
+  purchaseDate: string;
+  supplierName: string;
+  quantity: number;
+  unit: string;
+  bagWeightKg?: number | null;
+  quantityKg: number;
+  unitPrice: number;
+  totalCost: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  invoiceRef?: string | null;
+  batchNumber?: string | null;
+  expiryDate?: string | null;
+  storageLocation?: string | null;
+  status: "DRAFT" | "RECEIVED" | "CANCELLED";
+  receivedAt?: string | null;
+  receivedQuantityKg?: number | null;
+  transactionId?: string | null;
+  createdById: string;
+  createdByName?: string;
+  notes?: string | null;
+  createdAt: string;
+}
+
+export type FeedMovementType =
+  | "PURCHASE_RECEIPT"
+  | "FEED_ISSUE"
+  | "RETURN_TO_STOCK"
+  | "WASTAGE_LOSS"
+  | "MANUAL_ADJUSTMENT"
+  | "PURCHASE_REVERSAL";
+
+export interface FeedStockMovementDTO {
+  id: string;
+  farmId: string;
+  feedProductId: string;
+  feedProductName: string;
+  movementType: FeedMovementType;
+  quantityKg: number;
+  previousStockKg: number;
+  resultingStockKg: number;
+  feedPurchaseId?: string | null;
+  feedRecordId?: string | null;
+  unitCost?: number | null;
+  totalValue?: number | null;
+  storageLocation?: string | null;
+  createdById: string;
+  createdByName?: string;
+  reason?: string | null;
+  createdAt: string;
+}
+
+export type FeedAlertType = "LOW_STOCK" | "CRITICAL_STOCK" | "OUT_OF_STOCK" | "REPLENISHMENT_REMINDER";
+
+export interface FeedAlertDTO {
+  id: string;
+  farmId: string;
+  feedProductId: string;
+  feedProductName: string;
+  alertType: FeedAlertType;
+  severity: "INFO" | "WARNING" | "CRITICAL";
+  message: string;
+  currentStockKg: number;
+  thresholdKg?: number | null;
+  daysRemaining?: number | null;
+  status: "ACTIVE" | "ACKNOWLEDGED" | "RESOLVED";
+  acknowledgedAt?: string | null;
+  resolvedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FeedInventorySummaryDTO {
+  totalProductsTracked: number;
+  totalAvailableStockKg: number;
+  totalStockValueKes: number;
+  productsBelowReserve: number;
+  productsCriticallyLowOrOut: number;
+  activeAlertsCount: number;
+  recentPurchasesCount: number;
+}
+

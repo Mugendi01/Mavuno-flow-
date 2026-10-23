@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌱 Starting FarmPulse Kenyan Agriculture Seeder...");
+  console.log("🌱 Starting MavunoFlow Kenyan Agriculture Seeder...");
 
   // 1. Enterprise Types
   const enterpriseTypesData = [

@@ -95,6 +95,7 @@ class SyncEngine {
 
     this.notifyListeners();
 
+    // If online, attempt instant server submission first
     if (this.isOnline) {
       const syncResult = await this.syncSingle(item);
       if (syncResult.success) {
@@ -105,8 +106,18 @@ class SyncEngine {
           receiptNumber: syncResult.transaction?.receiptNumber,
           receiptId: syncResult.transaction?.receiptId,
         };
+      } else {
+        // ONLINE AND SERVER REJECTED:
+        // Do NOT treat validation/server failure as offline success!
+        throw new Error(syncResult.error || "Failed to save transaction to server.");
       }
     }
+
+    // Truly offline: queue locally in IndexedDB
+    if (offlineDB) {
+      await offlineDB.pendingTransactions.put(item);
+    }
+    this.notifyListeners();
 
     return {
       localId,
@@ -120,7 +131,7 @@ class SyncEngine {
    */
   private async syncSingle(
     item: OfflineSyncItem
-  ): Promise<{ success: boolean; transaction?: any }> {
+  ): Promise<{ success: boolean; transaction?: any; error?: string }> {
     try {
       const res = await fetch("/api/transactions", {
         method: "POST",
@@ -131,25 +142,23 @@ class SyncEngine {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         if (offlineDB) {
-          await offlineDB.pendingTransactions.update(item.localId, {
-            status: "SYNCED",
-          });
-          // Cleanup synced items older than 1 minute
+          // Cleanup synced items from offline queue
           await offlineDB.pendingTransactions.delete(item.localId);
         }
         this.notifyListeners();
         return { success: true, transaction: data.transaction };
       } else {
         const errorData = await res.json().catch(() => ({}));
+        const errorMessage = errorData.error || `Server returned ${res.status}`;
         if (offlineDB) {
           await offlineDB.pendingTransactions.update(item.localId, {
             status: "FAILED",
             retryCount: item.retryCount + 1,
-            lastError: errorData.error || "Server rejected transaction",
+            lastError: errorMessage,
           });
         }
         this.notifyListeners();
-        return { success: false };
+        return { success: false, error: errorMessage };
       }
     } catch (err: any) {
       if (offlineDB) {
@@ -160,7 +169,7 @@ class SyncEngine {
         });
       }
       this.notifyListeners();
-      return { success: false };
+      return { success: false, error: err.message || "Network connection error" };
     }
   }
 

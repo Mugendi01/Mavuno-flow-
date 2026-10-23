@@ -1,31 +1,25 @@
 import React from "react";
 import { AnalyticsService } from "@/lib/services/analyticsService";
-import prisma from "@/lib/prisma";
+import { AuthContextService } from "@/lib/services/authContext";
 import { Layers, ArrowUpRight, ArrowDownRight, PieChart, Sparkles, AlertTriangle } from "lucide-react";
+import { EnterpriseCardActions } from "@/components/enterprises/EnterpriseCardActions";
 
 export const revalidate = 0;
 
 export default async function EnterprisesPage() {
-  let farmId = "baraka-agri-ventures";
   let enterprises: any[] = [];
   let dbErrorNotice: string | null = null;
+  let currency = "KES";
 
   try {
-    const farm = await prisma.farm.findFirst({
-      where: {
-        OR: [{ slug: farmId }, { id: farmId }],
-      },
-    });
-    if (farm) {
-      farmId = farm.id;
-    }
+    const authContext = await AuthContextService.getActiveContext();
+    const farmId = authContext.farm.id;
+    currency = authContext.farm.currency || "KES";
     enterprises = await AnalyticsService.getEnterprisePerformance(farmId);
   } catch (error: any) {
     console.error("EnterprisesPage data fetch error:", error);
     dbErrorNotice = error?.message || "Failed to load enterprise data from database.";
   }
-
-  const currency = "KES";
 
   return (
     <div className="space-y-6">
@@ -80,20 +74,27 @@ export default async function EnterprisesPage() {
                     </div>
                   </div>
 
-                  <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black ${
-                      isProfitable
-                        ? "bg-emerald-100 text-emerald-800"
-                        : "bg-red-100 text-red-800"
-                    }`}
-                  >
-                    {isProfitable ? (
-                      <ArrowUpRight className="w-3.5 h-3.5" />
-                    ) : (
-                      <ArrowDownRight className="w-3.5 h-3.5" />
-                    )}
-                    {e.marginPercent}% margin
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black ${
+                        isProfitable
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {isProfitable ? (
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      ) : (
+                        <ArrowDownRight className="w-3.5 h-3.5" />
+                      )}
+                      {e.marginPercent}% margin
+                    </span>
+                    <EnterpriseCardActions
+                      enterpriseId={e.enterpriseId}
+                      enterpriseName={e.enterpriseName}
+                      status={e.status || "ACTIVE"}
+                    />
+                  </div>
                 </div>
 
                 {/* Financial Summary */}

@@ -301,7 +301,7 @@ export class ReportService {
     <!-- Header -->
     <div style="background-color: #1B4332; padding: 28px 24px; color: #FFFFFF;">
       <div style="display: flex; justify-content: space-between; align-items: baseline;">
-        <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">🌾 FARMPULSE</h1>
+        <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px;">🌾 MAVUNOFLOW</h1>
         <span style="font-size: 13px; color: #95D5B2; font-weight: 500;">Week ${period.weekNumber}, ${period.year}</span>
       </div>
       <p style="margin: 8px 0 0 0; font-size: 16px; font-weight: 600;">${farm.name} <span style="font-weight: 400; opacity: 0.85; font-size: 13px;">(${farm.locationCounty})</span></p>
@@ -392,7 +392,7 @@ export class ReportService {
 
     <!-- Footer -->
     <div style="background-color: #F8F9FA; padding: 16px 24px; border-top: 1px solid #E5E7EB; text-align: center; font-size: 12px; color: #6B7280;">
-      <p style="margin: 0;">FarmPulse Farm Management Platform — Built for Sustainable African Agriculture.</p>
+      <p style="margin: 0;">MavunoFlow Farm Management Platform — Built for Sustainable African Agriculture.</p>
       <p style="margin: 4px 0 0 0;">Report delivered according to schedule: Mondays at 07:00 AM (Africa/Nairobi).</p>
     </div>
 

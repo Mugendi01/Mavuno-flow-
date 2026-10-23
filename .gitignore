@@ -1,2 +1,25 @@
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+
+# Next.js build output
 .next
+out
+build
+
+# TypeScript
+*.tsbuildinfo
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Prisma binary engines & generated client
+*.node
+src/generated/
+prisma/dev.db-journal
+
+# Local env files
+.env.local
+.env.*.local

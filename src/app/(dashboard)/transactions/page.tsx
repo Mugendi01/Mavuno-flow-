@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import prisma from "@/lib/prisma";
+import { AuthContextService } from "@/lib/services/authContext";
+import { TransactionRowActions } from "@/components/transactions/TransactionRowActions";
 
 export const revalidate = 0;
 
@@ -24,23 +25,19 @@ export default async function TransactionsPage({
 }: {
   searchParams: { [key: string]: string | undefined };
 }) {
-  let farmId = "baraka-agri-ventures";
+  let farmId = "";
   const typeFilter = searchParams.type as any;
   const enterpriseId = searchParams.enterpriseId;
   const search = searchParams.search;
 
   let data = { transactions: [] as any[], total: 0 };
   let dbErrorNotice: string | null = null;
+  let currency = "KES";
 
   try {
-    const farm = await prisma.farm.findFirst({
-      where: {
-        OR: [{ slug: farmId }, { id: farmId }],
-      },
-    });
-    if (farm) {
-      farmId = farm.id;
-    }
+    const authContext = await AuthContextService.getActiveContext(searchParams.farmId);
+    farmId = authContext.farm.id;
+    currency = authContext.farm.currency || "KES";
 
     data = await TransactionService.getTransactions({
       farmId,
@@ -53,8 +50,6 @@ export default async function TransactionsPage({
     console.error("TransactionsPage data fetch error:", error);
     dbErrorNotice = error?.message || "Failed to load transactions from database.";
   }
-
-  const currency = "KES";
 
   return (
     <div className="space-y-6">
@@ -127,12 +122,13 @@ export default async function TransactionsPage({
                 <th className="py-3 px-4 text-right">Amount</th>
                 <th className="py-3 px-4 text-center">Status</th>
                 <th className="py-3 px-4 text-center">Receipt</th>
+                <th className="py-3 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-farm-border">
               {data.transactions.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-farm-muted text-xs">
+                  <td colSpan={10} className="py-12 text-center text-farm-muted text-xs">
                     No transactions found matching your criteria.
                   </td>
                 </tr>
@@ -220,6 +216,9 @@ export default async function TransactionsPage({
                         ) : (
                           <span className="text-[11px] text-farm-muted">—</span>
                         )}
+                      </td>
+                      <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                        <TransactionRowActions transaction={tx} />
                       </td>
                     </tr>
                   );

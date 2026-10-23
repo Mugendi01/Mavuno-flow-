@@ -40,7 +40,7 @@ export default async function ReceiptVerificationPage({
               <Sprout className="w-4 h-4 text-farm-lime" />
             </div>
             <div>
-              <span className="font-extrabold text-base tracking-tight">FARMPULSE</span>
+              <span className="font-extrabold text-base tracking-tight">MAVUNOFLOW</span>
               <p className="text-[10px] text-farm-mint">Digital Receipt Verification</p>
             </div>
           </div>
@@ -57,9 +57,9 @@ export default async function ReceiptVerificationPage({
               <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center mx-auto shadow-inner">
                 <CheckCircle2 className="w-10 h-10 text-emerald-600" />
               </div>
-              <h1 className="text-xl font-black text-emerald-950">Authentic FarmPulse Receipt</h1>
+              <h1 className="text-xl font-black text-emerald-950">Authentic MavunoFlow Receipt</h1>
               <p className="text-xs text-emerald-700 font-medium">
-                ✓ Cryptographically confirmed authentic transaction in FarmPulse registry.
+                ✓ Cryptographically confirmed authentic transaction in MavunoFlow registry.
               </p>
             </div>
           )}
@@ -197,10 +197,10 @@ export default async function ReceiptVerificationPage({
         <div className="p-4 bg-farm-bg border-t border-farm-border text-center text-[11px] text-farm-muted space-y-1">
           <div className="flex items-center justify-center gap-1 font-semibold text-farm-slate">
             <ShieldCheck className="w-3.5 h-3.5 text-farm-secondary" />
-            <span>FarmPulse Public Verification Protocol</span>
+            <span>MavunoFlow Public Verification Protocol</span>
           </div>
           <p className="text-[10px] leading-relaxed">
-            This verification service confirms authentic recording in FarmPulse. No sensitive farmer data, login credentials, or private farm financials are exposed.
+            This verification service confirms authentic recording in MavunoFlow. No sensitive farmer data, login credentials, or private farm financials are exposed.
           </p>
         </div>
       </div>

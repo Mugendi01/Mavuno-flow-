@@ -30,7 +30,7 @@ export class QRCodeService {
         margin: options?.margin ?? 2,
         width: options?.width ?? 320,
         color: {
-          dark: "#1B4332", // FarmPulse Deep Forest Green for branding & high contrast
+          dark: "#1B4332", // MavunoFlow Deep Forest Green for branding & high contrast
           light: "#FFFFFF",
         },
       });

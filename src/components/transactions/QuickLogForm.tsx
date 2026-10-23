@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { syncEngine } from "@/lib/offline/syncEngine";
-import { TransactionType, PaymentMethod, PaymentStatus } from "@/lib/types";
+import { TransactionType, PaymentMethod, PaymentStatus, TransactionCreateInput } from "@/lib/types";
 import {
   CheckCircle2,
   Calendar,
@@ -34,10 +35,13 @@ export function QuickLogForm({
   onCancel,
   defaultType = "EXPENSE",
 }: QuickLogFormProps) {
+  const router = useRouter();
   const [type, setType] = useState<TransactionType>(defaultType);
   const [transactionDate, setTransactionDate] = useState(
     new Date().toISOString().split("T")[0]
   );
+  const [farmId, setFarmId] = useState("");
+  const [createdById, setCreatedById] = useState("");
   const [enterpriseId, setEnterpriseId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [quantity, setQuantity] = useState<string>("");
@@ -64,47 +68,48 @@ export function QuickLogForm({
     isOffline: boolean;
   } | null>(null);
 
-  // Fallback farm ID and user ID for demo context
-  const farmId = "baraka-agri-ventures";
-  const createdById = "farmer-john";
-
-  // Load enterprises and categories
+  // Load real enterprises and categories from authoritative database APIs
   useEffect(() => {
     async function loadMeta() {
       try {
         setLoadingMeta(true);
-        // Standard default enterprises for Kenyan farming
-        const mockEnterprises = [
-          { id: "ent-poultry", name: "Poultry (Layers & Kienyeji)", code: "POULTRY", defaultUnit: "Tray" },
-          { id: "ent-dairy", name: "Dairy Cattle (Friesians)", code: "CATTLE", defaultUnit: "Litre" },
-          { id: "ent-fish", name: "Tilapia Ponds (Aquaculture)", code: "AQUACULTURE", defaultUnit: "Kg" },
-          { id: "ent-goats", name: "Goats & Sheep (Boer/Dairy)", code: "GOATS_SHEEP", defaultUnit: "Head" },
-          { id: "ent-crops", name: "Crops & Silage (Boma Rhodes)", code: "CROPS", defaultUnit: "Bale" },
-        ];
-        setEnterprises(mockEnterprises);
-        setEnterpriseId(mockEnterprises[0].id);
+        // 1. Resolve active Farm & User context
+        const farmRes = await fetch("/api/farm");
+        let activeFarmId = "";
+        if (farmRes.ok) {
+          const farmData = await farmRes.json();
+          if (farmData.farm) {
+            activeFarmId = farmData.farm.id;
+            setFarmId(farmData.farm.id);
+          }
+          if (farmData.user) {
+            setCreatedById(farmData.user.id);
+          }
+        }
 
-        const mockCategories = [
-          // Expense categories
-          { id: "cat-feed", name: "Feed (Pellets, Mash, Dairy Meal)", type: "EXPENSE" },
-          { id: "cat-vet", name: "Veterinary Drugs & Dewormers", type: "EXPENSE" },
-          { id: "cat-vac", name: "Vaccines (Newcastle, Gumboro)", type: "EXPENSE" },
-          { id: "cat-labour", name: "Labour & Casual Wages", type: "EXPENSE" },
-          { id: "cat-transport", name: "Transport & Boda Delivery", type: "EXPENSE" },
-          { id: "cat-supplies", name: "Agrovet Equipment & Supplies", type: "EXPENSE" },
-          { id: "cat-chicks", name: "Day-Old Chicks / Stock", type: "EXPENSE" },
-          { id: "cat-power", name: "Electricity, Solar & Generator Fuel", type: "EXPENSE" },
-          { id: "cat-other-exp", name: "General Maintenance & Other", type: "EXPENSE" },
-          // Income categories
-          { id: "cat-eggs", name: "Fresh Eggs (Trays)", type: "INCOME" },
-          { id: "cat-milk", name: "Raw Morning & Evening Milk", type: "INCOME" },
-          { id: "cat-fish-sale", name: "Harvested Whole Tilapia", type: "INCOME" },
-          { id: "cat-birds-live", name: "Live Mature Birds / Culled Layers", type: "INCOME" },
-          { id: "cat-hay", name: "Boma Rhodes Hay Bales", type: "INCOME" },
-          { id: "cat-manure", name: "Farmyard Manure / Organic Compost", type: "INCOME" },
-          { id: "cat-other-inc", name: "Other Farm Produce", type: "INCOME" },
-        ];
-        setCategories(mockCategories);
+        // 2. Fetch active Enterprises from database
+        const entUrl = activeFarmId ? `/api/enterprises?farmId=${activeFarmId}` : "/api/enterprises";
+        const entRes = await fetch(entUrl);
+        if (entRes.ok) {
+          const entData = await entRes.json();
+          if (entData.enterprises && entData.enterprises.length > 0) {
+            setEnterprises(entData.enterprises);
+            setEnterpriseId(entData.enterprises[0].id);
+            if (entData.enterprises[0].defaultUnit) {
+              setUnit(entData.enterprises[0].defaultUnit);
+            }
+          }
+        }
+
+        // 3. Fetch real Categories from database
+        const catUrl = activeFarmId ? `/api/categories?farmId=${activeFarmId}` : "/api/categories";
+        const catRes = await fetch(catUrl);
+        if (catRes.ok) {
+          const catData = await catRes.json();
+          if (catData.categories) {
+            setCategories(catData.categories);
+          }
+        }
       } catch (err) {
         console.error("Meta loading error", err);
       } finally {
@@ -114,12 +119,20 @@ export function QuickLogForm({
     loadMeta();
   }, []);
 
+  const handleEnterpriseChange = (newEntId: string) => {
+    setEnterpriseId(newEntId);
+    const selected = enterprises.find((e) => e.id === newEntId);
+    if (selected?.defaultUnit) {
+      setUnit(selected.defaultUnit);
+    }
+  };
+
   // Filter categories by type
   const availableCategories = categories.filter(
     (c) => c.type === (type === "EXPENSE" ? "EXPENSE" : "INCOME")
   );
 
-  // Set default category when type or enterprise changes
+  // Set default category when type or available categories change
   useEffect(() => {
     if (availableCategories.length > 0 && !availableCategories.find((c) => c.id === categoryId)) {
       setCategoryId(availableCategories[0].id);
@@ -168,7 +181,15 @@ export function QuickLogForm({
     e.preventDefault();
     setFormError(null);
 
-    const parsedAmount = parseFloat(amount);
+    // Calculate total amount on client (and server will also recalculate/verify)
+    let parsedAmount = parseFloat(amount);
+    const parsedQty = quantity ? parseFloat(quantity) : null;
+    const parsedUnitPrice = unitPrice ? parseFloat(unitPrice) : null;
+
+    if (parsedQty !== null && parsedUnitPrice !== null && parsedQty > 0 && parsedUnitPrice > 0) {
+      parsedAmount = Math.round(parsedQty * parsedUnitPrice * 100) / 100;
+    }
+
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       setFormError("Please enter a valid amount greater than zero.");
       return;
@@ -189,10 +210,15 @@ export function QuickLogForm({
       return;
     }
 
+    if (!farmId || !createdById) {
+      setFormError("Active farm or user session is initializing. Please wait a moment and try again.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const payload = {
+      const payload: TransactionCreateInput = {
         farmId,
         enterpriseId,
         categoryId,
@@ -200,9 +226,9 @@ export function QuickLogForm({
         type,
         transactionDate: new Date(transactionDate).toISOString(),
         amount: parsedAmount,
-        quantity: quantity ? parseFloat(quantity) : undefined,
-        unit: quantity ? unit : undefined,
-        unitPrice: unitPrice ? parseFloat(unitPrice) : undefined,
+        quantity: parsedQty ?? undefined,
+        unit: parsedQty ? unit : undefined,
+        unitPrice: parsedUnitPrice ?? undefined,
         paymentMethod,
         paymentStatus,
         salesChannel: type === "SALE" ? salesChannel : undefined,
@@ -211,7 +237,7 @@ export function QuickLogForm({
         receiptUrl: receiptUrl || undefined,
       };
 
-      // Enqueue to offline sync engine (handles both instant online fetch and offline queue)
+      // Enqueue to offline sync engine (submits to server if online, queues if offline)
       const res = await syncEngine.enqueueTransaction(payload);
 
       setIsSubmitting(false);
@@ -222,16 +248,22 @@ export function QuickLogForm({
           receiptId: res.receiptId,
           isOffline: false,
         });
+        // Invalidate Next.js cache so dashboard and ledger refresh immediately
+        router.refresh();
+        if (onSuccess) onSuccess();
       } else {
         setCreatedReceipt({
           receiptNumber: res.temporaryReceiptNumber || `OFFLINE-${res.localId.slice(0, 8).toUpperCase()}`,
           receiptId: undefined,
           isOffline: true,
         });
+        router.refresh();
+        if (onSuccess) onSuccess();
       }
     } catch (err: any) {
       console.error("Submission failed:", err);
-      setFormError(err.message || "Failed to record transaction.");
+      // NEVER show fake success if server rejected: display the exact error message
+      setFormError(err.message || "Failed to record transaction in database.");
       setIsSubmitting(false);
     }
   };
@@ -363,7 +395,7 @@ export function QuickLogForm({
             <Layers className="w-4 h-4 absolute left-3 top-2.5 text-farm-muted" />
             <select
               value={enterpriseId}
-              onChange={(e) => setEnterpriseId(e.target.value)}
+              onChange={(e) => handleEnterpriseChange(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-sm bg-farm-surface border border-farm-border rounded-lg text-farm-charcoal focus:ring-2 focus:ring-farm-accent focus:outline-hidden"
               required
             >

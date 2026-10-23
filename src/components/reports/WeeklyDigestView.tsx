@@ -24,7 +24,7 @@ export function WeeklyDigestView() {
     async function loadDigest() {
       try {
         setLoading(true);
-        const res = await fetch("/api/reports/weekly?farmId=baraka-agri-ventures");
+        const res = await fetch("/api/reports/weekly");
         if (res.ok) {
           const data = await res.json();
           setDigest(data);
@@ -117,7 +117,7 @@ export function WeeklyDigestView() {
         <div className="flex justify-between items-start border-b-2 border-farm-primary pb-4 mb-5">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xl font-black text-farm-primary tracking-tight">FARMPULSE</span>
+              <span className="text-xl font-black text-farm-primary tracking-tight">MAVUNOFLOW</span>
               <span className="text-xs font-bold bg-farm-mint text-farm-primary px-2 py-0.5 rounded">
                 WEEKLY DIGEST
               </span>
@@ -277,7 +277,7 @@ export function WeeklyDigestView() {
 
         {/* Report Footer */}
         <div className="mt-8 pt-3 border-t border-farm-border text-center text-[10px] text-farm-muted">
-          FarmPulse Platform • Automated weekly farm summary for Nakuru County • Confidential farm management record
+          MavunoFlow Platform • Automated weekly farm summary for Nakuru County • Confidential farm management record
         </div>
       </div>
     </div>
